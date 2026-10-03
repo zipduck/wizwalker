@@ -56,6 +56,7 @@ class HookHandler(MemoryReader):
         self._base_addrs = {}
 
         self._hook_cache = {}
+        self._round_spell_closing = False
 
     async def _get_open_autobot_address(self, size: int) -> int:
         if self._autobot_pos + size > self.AUTOBOT_SIZE:
@@ -115,6 +116,16 @@ class HookHandler(MemoryReader):
         return address
 
     async def close(self):
+        # The optional round-spell hook installs asynchronously. Complete its
+        # registration before iterating hooks, including when Deimos cancels
+        # background tasks without awaiting them before closing clients.
+        self._round_spell_closing = True
+        pending = getattr(self, '_round_spell_install_task', None)
+        if pending is not None:
+            try:
+                await asyncio.shield(pending)
+            except Exception as exc:
+                logger.debug('Round-spell hook installation ended during close: {}', exc)
         for hook in self._active_hooks.values():
             await hook.unhook()
 
@@ -124,6 +135,7 @@ class HookHandler(MemoryReader):
         self._autobot_pos = 0
         self._autobot_address = None
         self._base_addrs = {}
+        self._round_spell_closing = False
 
     async def _check_for_autobot(self):
         if self._autobot_lock is None:
