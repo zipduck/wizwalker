@@ -247,8 +247,10 @@ class PlayerStatHook(SimpleHook):
 
 
 class QuestHook(SimpleHook):
-    pattern = rb"\xF3\x41\x0F\x10.\xFC\x0C\x00\x00\xF3\x0F\x11"
-    exports = [("cord_struct", 4)]
+    pattern = rb"\xF3\x41\x0F\x10\x87\xFC\x0C\x00\x00\xF3\x0F\x11"
+    ORIGINAL = b"\xF3\x41\x0F\x10\x87\xFC\x0C\x00\x00"
+    instruction_length = 9
+    exports = [("cord_struct", 8)]  # captured pointer is 64-bit
     noops = 4
 
     async def bytecode_generator(self, packed_exports):
@@ -266,13 +268,17 @@ class QuestHook(SimpleHook):
 
 
 class ClientHook(SimpleHook):
+    # Test realm keeps RDI as the root ClientObject here. Its stack frame grew
+    # by eight bytes, moving the following saved shared_ptr from rsp+38 to +40.
+    # Pin the replayed instruction as well as the surrounding context.
     pattern = (
-        rb"\x18\x48......\x48\x8B\x7C\x24\x38\x48\x85\xFF\x74\x29\x8B\xC6\xF0\x0F\xC1\x47\x08\x83\xF8\x01\x75\x1D"
+        rb"\x18\x48\x8B\x9B\xC0\x01\x00\x00\x48\x8B\x7C\x24\x40\x48\x85\xFF\x74\x29\x8B\xC6\xF0\x0F\xC1\x47\x08\x83\xF8\x01\x75\x1D"
         rb"\x48\x8B\x07\x48\x8B\xCF\xFF\x50\x08\xF0\x0F\xC1\x77\x0C"
     )
     exports = [("current_client_addr", 8)]
     instruction_length = 7
     noops = 2
+    ORIGINAL = b"\x48\x8B\x9B\xC0\x01\x00\x00"
 
     # this is because the 18 byte at the start was tacked on
     async def get_jump_address(self, pattern: bytes, module: str = None) -> int:
@@ -289,8 +295,8 @@ class ClientHook(SimpleHook):
                 b"\x50"  # push rax
                 b"\x48\x8B\xC7"  # mov rax,rdi
                 b"\x48\xA3" + packed_exports[0][1] +  # mov [current_client], rax
-                b"\x58"  # pop rax
-                b"\x48\x8B\x9B\xC0\x01\x00\x00"  # original instruction
+                b"\x58" +  # pop rax
+                self.ORIGINAL  # mov rbx,[rbx+1C0h], replayed intact
         )
         # fmt: on
 
@@ -298,19 +304,25 @@ class ClientHook(SimpleHook):
 
 
 class RootWindowHook(SimpleHook):
-    pattern = rb".......\x48\x8B\x01.......\xFF\x50\x70\x84"
+    # Test realm uses R15 for this manager, whereas the live hook used R13.
+    # Include both member loads so register/replay drift fails the scan.
+    pattern = (
+        rb"\x49\x8B\x8F\xD8\x00\x00\x00\x48\x8B\x01"
+        rb"\x49\x8B\x97\xC8\x00\x00\x00\xFF\x50\x70\x84"
+    )
     instruction_length = 7
     noops = 2
     exports = [("current_root_window_addr", 8)]
+    ORIGINAL = b"\x49\x8B\x8F\xD8\x00\x00\x00"
 
     async def bytecode_generator(self, packed_exports):
         # fmt: off
         bytecode = (
             b"\x50"  # push rax
-            b"\x49\x8B\x85\xD8\x00\x00\x00"  # mov rax,[r13+D8]
+            b"\x49\x8B\x87\xD8\x00\x00\x00"  # mov rax,[r15+D8]
             b"\x48\xA3" + packed_exports[0][1] +  # mov [current_root_window_addr], rax
-            b"\x58"  # pop rax
-            b"\x49\x8B\x8D\xD8\x00\x00\x00"  # original instruction
+            b"\x58" +  # pop rax
+            self.ORIGINAL  # mov rcx,[r15+D8], replayed intact
         )
         # fmt: on
 
@@ -338,14 +350,16 @@ class RenderContextHook(SimpleHook):
 
 
 class MovementTeleportHook(SimpleHook):
-    pattern = rb"\x57\x48\x83\xEC.\x48\x8B\x99...." \
-              rb"\x48\x85\xDB\x74.\x4C\x8B\x43.\x48\x8B\x5B"\
-              rb".\x48\x85\xDB\x74.\xF0\xFF\x43.\x4D\x85" \
-              rb"\xC0\x74.\xF2\x0F\x10\x02\xF2\x41\x0F\x11\x40" \
-              rb".\x8B\x42.\x41\x89\x40.\x41\xC6\x80."
-
-    instruction_length = 5
-    noops = 0
+    # RCX is the target ClientObject; RDX points to the incoming XYZ.
+    # The new two-byte push and four-byte stack adjustment must be replayed whole.
+    pattern = (
+        rb"\x40\x57\x48\x83\xEC\x30\x48\xC7\x44\x24\x20\xFE\xFF\xFF\xFF"
+        rb"\x48\x89\x5C\x24\x40\x48\x8B\x99\xB8\x01\x00\x00\x48\x85\xDB"
+        rb"\x74.\x4C\x8B\x43\x70\x48\x8B\x5B\x78"
+    )
+    ORIGINAL = b"\x40\x57\x48\x83\xEC\x30"
+    instruction_length = 6
+    noops = 1
     # position vector = 12 + 1 for update bool + 8 for target object address
     exports = [("teleport_helper", 21)]
 
@@ -390,17 +404,27 @@ class MovementTeleportHook(SimpleHook):
         target_address = jes[0]
 
         inside_event_je_addr = await self.pattern_scan(
-            rb"\x74.\xF3\x0F\x10\x55\xA8",
+            rb"\x74.\xF3\x0F\x10\x55\x90\xF3\x0F\x58\x54\x24\x48",
             module="WizardGraphicalClient.exe",
         )
         
         event_dispatch_je_addr = await self.pattern_scan(
-            rb"\x74.\xF3\x0F\x10\x44\x24\x54\xF3\x0F",
+            rb"\x74.\xF3\x0F\x10\x44\x24\x58\xF3\x0F\x11\x44\x24\x70",
             module="WizardGraphicalClient.exe",
         )
 
         old_inside_event_je_bytes = await self.read_bytes(inside_event_je_addr, 2)
         old_event_dispatch_je_addr = await self.read_bytes(event_dispatch_je_addr, 2)
+
+        # Both branches must belong to the same collision block. The old
+        # dispatch signature also matched a different block in the new build.
+        exits = [address + 2 + struct.unpack("b", data[1:])[0]
+                 for address, data in ((inside_event_je_addr, old_inside_event_je_bytes),
+                                       (event_dispatch_je_addr, old_event_dispatch_je_addr))]
+        if (old_inside_event_je_bytes[:1] != b"\x74"
+                or old_event_dispatch_je_addr[:1] != b"\x74"
+                or exits[0] != exits[1]):
+            raise RuntimeError("Movement collision branches do not share the expected exit")
 
         self._collision_je_addrs = (inside_event_je_addr, event_dispatch_je_addr)
         self._old_collision_jes_bytes = (old_inside_event_je_bytes, old_event_dispatch_je_addr)
@@ -412,14 +436,10 @@ class MovementTeleportHook(SimpleHook):
         self._old_je_page_protection = self._set_page_protection(target_address, 0x40)
 
     async def bytecode_generator(self, packed_exports):
-        packed_should_update = bytearray(packed_exports[0][1])
-        packed_should_update[0] += 12
-
-        packed_z = bytearray(packed_exports[0][1])
-        packed_z[0] += 8
-
-        packed_target_addr = bytearray(packed_exports[0][1])
-        packed_target_addr[0] += 13
+        helper_address = struct.unpack("<Q", packed_exports[0][1])[0]
+        packed_should_update = struct.pack("<Q", helper_address + 12)
+        packed_z = struct.pack("<Q", helper_address + 8)
+        packed_target_addr = struct.pack("<Q", helper_address + 13)
 
         jes = await self.hook_handler.client._get_je_instruction_forward_backwards()
 
@@ -458,9 +478,7 @@ class MovementTeleportHook(SimpleHook):
             b"\x48\xA3" + packed_jes_and +
             b"\x48\xB8" + jes_cmp_bytes +
             b"\x48\xA3" + packed_jes_cmp +
-            b"\x58" # pop rax
-            b"\x57" # push rdi (original bytes)
-            b"\x48\x83\xEC\x20" # sub rsp,20 (original bytes)
+            b"\x58" + self.ORIGINAL  # pop rax; replay push rdi / sub rsp,30
         )
         # fmt: on
 
@@ -473,6 +491,8 @@ class MovementTeleportHook(SimpleHook):
         pattern, module = await self.get_pattern()
 
         self.jump_address = await self.get_jump_address(pattern, module=module)
+        if await self.read_bytes(self.jump_address, self.instruction_length) != self.ORIGINAL:
+            raise RuntimeError("Movement teleport prologue differs from the reviewed instructions")
         self.hook_address = await self.get_hook_address(200)
 
         logger.debug(f"Got hook address {self.hook_address} in {type(self)}")
@@ -532,12 +552,34 @@ class MovementTeleportHook(SimpleHook):
 
 
 class DropsToggleHook(SimpleHook):
-    pattern = rb"\x4C\x8B\xDC\x48\x83\xEC\x68\x48\x8B\x05...." \
-              rb"\x48\x33\xC4\x48\x89\x44\x24.\x48\x8D\x05...."
-
-    instruction_length = 7
+    # Loot event dispatch. The adjacent QuestRewards callback has an otherwise
+    # similar body; pin the four-character name length and verify the string.
+    pattern = (
+        rb"\x48\x83\xEC\x68\x48\xC7\x44\x24\x30\xFE\xFF\xFF\xFF"
+        rb"\x48\x8B\x05....\x48\x33\xC4\x48\x89\x44\x24\x58"
+        rb"\x48\x8D\x05....\x48\x89\x44\x24\x20\x48\x89\x54\x24\x28"
+        rb"\x66\x0F\x6F\x05....\xF3\x0F\x7F\x44\x24\x48\xC6\x44\x24\x38\x00"
+        rb"\x41\xB8\x04\x00\x00\x00\x48\x8D\x15....\x48\x8D\x4C\x24\x38"
+    )
+    ORIGINAL = b"\x48\x83\xEC\x68\x48\xC7\x44\x24\x30\xFE\xFF\xFF\xFF"
+    _STRING_PROBE_OFFSET = 0x46
+    _EXPECTED_STRING = b"Loot\x00"
+    instruction_length = 13
     exports = [("disable_drops_bool", 1)]
-    noops = 2
+    noops = 8
+
+    async def get_jump_address(self, pattern, module=None):
+        address = await self.pattern_scan(pattern, module=module)
+        if await self.read_bytes(address, self.instruction_length) != self.ORIGINAL:
+            raise RuntimeError("Drops prologue differs from reviewed instructions")
+        lea = address + self._STRING_PROBE_OFFSET
+        instruction = await self.read_bytes(lea, 7)
+        if instruction[:3] != b"\x48\x8D\x15":
+            raise RuntimeError("Drops name is not loaded by the expected RIP-relative LEA")
+        target = lea + 7 + struct.unpack("<i", instruction[3:])[0]
+        if await self.read_bytes(target, len(self._EXPECTED_STRING)) != self._EXPECTED_STRING:
+            raise RuntimeError("Drops callback does not dispatch Loot")
+        return address
 
     async def bytecode_generator(self, packed_exports):
         return (
@@ -547,9 +589,8 @@ class DropsToggleHook(SimpleHook):
             b"\x58" # pop rax
             b"\x0F\x84\x04\x00\x00\x00" # je down 4
             b"\x48\x31\xC0" # xor rax,rax
-            b"\xC3" # ret
-            b"\x4C\x8B\xDC" # mov r11,rsp (original bytes)
-            b"\x48\x83\xEC\x68" # sub rsp,68 (original bytes)
+            b"\xC3" + # ret without changing the original stack frame
+            self.ORIGINAL  # sub rsp,68; initialize unwind-state local to -2
         )
 
 
@@ -945,7 +986,7 @@ class ChatSendHook(SimpleHook):
 
     Supported actions:
       send_trigger=1  -> call send_directed_chat(GameClient, &send_struct)
-      buddy_trigger=1 -> call buddy_request_add(&buddy_obj)
+      buddy_trigger=1 -> call buddy_request_add(&buddy_obj, target_gid)
 
     Python writes data to the export buffer, sets the trigger to 1,
     then polls until the hook clears it back to 0 (action complete).
@@ -960,7 +1001,8 @@ class ChatSendHook(SimpleHook):
         rb"\x38\x9F....\x74.\xE8....\x83\xF8\x64\x0F\x8F"
     )
     instruction_length = 6  # CMP [RDI+offset], BL = 6 bytes
-    noops = 0
+    noops = 1
+    ORIGINAL = b"\x38\x9F\xB8\x11\x02\x00"
     exports = [
         ("send_trigger", 1),      # chat: 1 = send requested, 0 = idle
         ("send_struct", 0x28),    # chat: DirectedChatRequest (40 bytes)
@@ -983,26 +1025,23 @@ class ChatSendHook(SimpleHook):
     _SEND_DISAMBIG_OFFSET = 0x33
     _SEND_DISAMBIG_BYTES = b"\x48\x83\xC2\x20"
 
-    # --- Buddy add function: FUN_141710e10 ---
-    # This is the clean buddy add that takes (BuddyListManager, target_gid).
-    # The key differentiator from FUN_1412536b0 (dialog callback) is
-    # MOV [RSP+20h], RDX at func+0x1E — it saves param_2 (the GID).
-    # FUN_1412536b0 doesn't have this instruction because it only
-    # takes one parameter.
+    # Test realm: full entry, including the unwind-state local. Saving RDX
+    # distinguishes (BuddyListManager, target_gid) from the dialog callback.
     _BUDDY_PATTERN = (
-        rb"\x48\x81\xEC\xA0\x00\x00\x00"       # SUB RSP, 0xA0
-        rb"\x48\x8B\x05...."                   # MOV RAX, [cookie]
-        rb"\x48\x33\xC4"                        # XOR RAX, RSP
-        rb"\x48\x89\x84\x24\x90\x00\x00\x00"  # MOV [RSP+90h], RAX
-        rb"\x48\x8B\xD9"                        # MOV RBX, RCX
-        rb"\x48\x89\x54\x24\x20"               # MOV [RSP+20h], RDX (saves param_2)
-        rb"\xBA\x10\x00\x00\x00"               # MOV EDX, 0x10
-        rb"\x48\x8D\x4C\x24\x30"               # LEA RCX, [RSP+30h]
+        rb"\x40\x53\x48\x81\xEC\xA0\x00\x00\x00"
+        rb"\x48\xC7\x44\x24\x28\xFE\xFF\xFF\xFF"
+        rb"\x48\x8B\x05....\x48\x33\xC4"
+        rb"\x48\x89\x84\x24\x90\x00\x00\x00\x48\x8B\xD9"
+        rb"\x48\x89\x54\x24\x20\xBA\x10\x00\x00\x00\x48\x8D\x4C\x24\x30"
     )
-    # MOVUPS at func+0x72 loads "MSG_BUDDYREQUESTADD". Pattern starts
-    # at func+2 (skips PUSH RBX), so disambig offset is 0x72 - 2.
-    _BUDDY_DISAMBIG_OFFSET = 0x70
-    _BUDDY_DISAMBIG_BYTES = b"\x0F\x10\x05"
+    # Message construction now passes the name to a string helper via LEA RDX.
+    _BUDDY_DISAMBIG_OFFSET = 0x58
+    _BUDDY_DISAMBIG_BYTES = b"\x48\x8D\x15"
+    _BUDDY_EXPECTED_STRING = b"MSG_BUDDYREQUESTADD\x00"
+
+    def __init__(self, *args, friend_requests_only=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.friend_requests_only = friend_requests_only
 
     async def _resolve_send_func(self) -> int:
         """Resolve FUN_1416e5ac0 via pattern scan + disambiguation."""
@@ -1029,14 +1068,7 @@ class ChatSendHook(SimpleHook):
         )
 
     async def _resolve_buddy_add_func(self) -> int:
-        """Resolve FUN_141710e10 via pattern scan + string verification.
-
-        Multiple buddy functions (Add, Drop, etc.) share the same prologue
-        and all have MOVUPS at the same offset. We disambiguate by reading
-        the RIP-relative target of the MOVUPS and verifying it points to
-        the "MSG_BUDDYREQUESTADD" string (starts with 'M','S','G','_','B',
-        'U','D','D','Y','R','E','Q','U','E','S','T','A','D','D').
-        """
+        """Require exactly one two-argument friend-add entry and message name."""
         candidates = await self.pattern_scan(
             self._BUDDY_PATTERN,
             module="WizardGraphicalClient.exe",
@@ -1045,6 +1077,7 @@ class ChatSendHook(SimpleHook):
         if isinstance(candidates, int):
             candidates = [candidates]
 
+        qualified = []
         for addr in candidates:
             probe = await self.read_bytes(
                 addr + self._BUDDY_DISAMBIG_OFFSET,
@@ -1053,45 +1086,56 @@ class ChatSendHook(SimpleHook):
             if probe != self._BUDDY_DISAMBIG_BYTES:
                 continue
 
-            # Read the RIP-relative offset from the MOVUPS instruction.
-            # MOVUPS XMM0,[rip+disp32] = 0F 10 05 <disp32> (7 bytes)
-            movups_addr = addr + self._BUDDY_DISAMBIG_OFFSET
-            disp32_bytes = await self.read_bytes(movups_addr + 3, 4)
+            lea_addr = addr + self._BUDDY_DISAMBIG_OFFSET
+            disp32_bytes = await self.read_bytes(lea_addr + 3, 4)
             disp32 = struct.unpack("<i", disp32_bytes)[0]
-            string_addr = (movups_addr + 7) + disp32
+            string_addr = lea_addr + 7 + disp32
 
             # Verify it's "MSG_BUDDYREQUESTADD" (not DROP, ACCEPT, etc.)
-            string_bytes = await self.read_bytes(string_addr, 19)
-            if string_bytes == b"MSG_BUDDYREQUESTADD":
-                return addr - 2  # pattern starts at func+2
+            string_bytes = await self.read_bytes(string_addr, len(self._BUDDY_EXPECTED_STRING))
+            if string_bytes == self._BUDDY_EXPECTED_STRING:
+                qualified.append(addr)
+
+        if len(qualified) == 1:
+            return qualified[0]
 
         from wizwalker import PatternFailed
         raise PatternFailed(
             f"ChatSendHook: buddy add pattern matched "
-            f"{len(candidates)} but none loaded MSG_BUDDYREQUESTADD"
+            f"{len(candidates)} candidates, {len(qualified)} qualified; expected one"
         )
 
     async def hook(self):
-        """Override to allocate enough space for the larger bytecode."""
+        """Guard the loop instruction and clean up failed partial installs."""
         pattern, module = await self.get_pattern()
-
         self.jump_address = await self.get_jump_address(pattern, module=module)
-        self.hook_address = await self.get_hook_address(300)
+        self.jump_original_bytecode = await self.read_bytes(self.jump_address, 6)
+        if self.jump_original_bytecode != self.ORIGINAL:
+            raise RuntimeError('Social action loop: unexpected comparison instruction')
+        try:
+            self.hook_address = await self.get_hook_address(300)
+            self.hook_bytecode = await self.get_hook_bytecode()
+            self.jump_bytecode = await self.get_jump_bytecode()
+            if len(self.hook_bytecode) > 300:
+                raise RuntimeError('Social action trampoline exceeds reservation')
+            for name, size in self.exports:
+                await self.write_bytes(getattr(self, name), bytes(size))
+            await self.write_bytes(self.hook_address, self.hook_bytecode)
+            self._jump_written = True
+            await self.write_bytes(self.jump_address, self.jump_bytecode)
+        except BaseException:
+            await self.unhook()
+            raise
 
-        logger.debug(f"Got hook address {self.hook_address} in {type(self)}")
-        logger.debug(f"Got jump address {self.jump_address} in {type(self)}")
-
-        self.hook_bytecode = await self.get_hook_bytecode()
-        self.jump_bytecode = await self.get_jump_bytecode()
-
-        self.jump_original_bytecode = await self.read_bytes(
-            self.jump_address, len(self.jump_bytecode)
-        )
-
-        await self.prehook()
-        await self.write_bytes(self.hook_address, self.hook_bytecode)
-        await self.write_bytes(self.jump_address, self.jump_bytecode)
-        await self.posthook()
+    async def unhook(self):
+        if getattr(self, '_jump_written', False):
+            await self.write_bytes(self.jump_address, self.jump_original_bytecode)
+            self._jump_written = False
+        for name, _ in self.exports:
+            address = getattr(self, name, None)
+            if address:
+                await self.free(address)
+                setattr(self, name, None)
 
     def _build_action_block(self, trigger_addr, save_restore, call_setup, clear_trigger):
         """Build a check-trigger + call + clear block with jz skip."""
@@ -1142,7 +1186,7 @@ class ChatSendHook(SimpleHook):
         return save + call_bytes + restore, clear
 
     async def bytecode_generator(self, packed_exports):
-        send_func = await self._resolve_send_func()
+        send_func = None if self.friend_requests_only else await self._resolve_send_func()
         buddy_func = await self._resolve_buddy_add_func()
 
         send_trigger = packed_exports[0][1]
@@ -1158,16 +1202,18 @@ class ChatSendHook(SimpleHook):
         chat_call = (
             b"\x48\x89\xF9" +                   # mov rcx, rdi (GameClient)
             b"\x48\xBA" + send_struct +          # movabs rdx, &send_struct
-            b"\x48\xB8" + q(send_func) +         # movabs rax, send_func
+            b"\x48\xB8" + q(send_func or 0) +    # omitted entirely in friend-only mode
             b"\xFF\xD0"                          # call rax
         )
         chat_body, chat_clear = self._save_restore_regs(chat_call, send_trigger)
         chat_block = self._build_action_block(
             send_trigger, chat_body, b"", chat_clear
         )
+        if self.friend_requests_only:
+            chat_block = b""
 
         # --- Action 2: buddy add ---
-        # FUN_141710e10(BuddyListManager, target_gid_value)
+        # Resolved friend-add function (BuddyListManager, target_gid_value).
         #   param_1 needs [+0x18] = GameClient pointer
         #   param_2 = raw GID value (not a pointer)
         # We use buddy_obj as a fake BuddyListManager, writing RDI

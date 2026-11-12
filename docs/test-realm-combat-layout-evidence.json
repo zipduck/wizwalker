@@ -1,0 +1,1085 @@
+{
+  "test_sha256": "42b063ed6eb89d963e666a059a39bc4fb7a9fec3ef45021d54ba34387618fffe",
+  "live_sha256": "544ab726ef7b920a5ccb67aa3d06b245db7e0012317d2fe7856d58c17c31cf7e",
+  "test_registration_function": [
+    "0x1f96660",
+    "0x1f99368"
+  ],
+  "methods": {
+    "polymorph_turn_length": "m_nPolymorphTurnLength",
+    "write_polymorph_turn_length": "m_nPolymorphTurnLength",
+    "player_health": "m_playerHealth",
+    "write_player_health": "m_playerHealth",
+    "max_player_health": "m_maxPlayerHealth",
+    "write_max_player_health": "m_maxPlayerHealth",
+    "hide_current_hp": "m_HideCurrentHP",
+    "write_hide_current_hp": "m_HideCurrentHP",
+    "cur_max_hp": "m_curMaxHP",
+    "write_cur_max_hp": "m_curMaxHP",
+    "minion_starting_health": "m_minionStartingHealth",
+    "write_minion_starting_health": "m_minionStartingHealth",
+    "max_hand_size": "m_maxHandSize",
+    "write_max_hand_size": "m_maxHandSize",
+    "hand": "m_pHand",
+    "saved_hand": "m_pSavedHand",
+    "play_deck": "m_pPlayDeck",
+    "saved_play_deck": "m_pSavedPlayDeck",
+    "saved_game_stats": "m_pSavedGameStats",
+    "saved_primary_magic_school_id": "m_savedPrimaryMagicSchoolID",
+    "write_saved_primary_magic_school_id": "m_savedPrimaryMagicSchoolID",
+    "game_stats": "m_pGameStats",
+    "rotation": "m_rotation",
+    "write_rotation": "m_rotation",
+    "radius": "m_radius",
+    "write_radius": "m_radius",
+    "pvp": "m_pvp",
+    "write_pvp": "m_pvp",
+    "raid": "m_raid",
+    "write_raid": "m_raid",
+    "accuracy_bonus": "m_accuracyBonus",
+    "write_accuracy_bonus": "m_accuracyBonus",
+    "minion_sub_circle": "m_minionSubCircle",
+    "write_minion_sub_circle": "m_minionSubCircle",
+    "is_minion": "m_isMinion",
+    "write_is_minion": "m_isMinion",
+    "minion_level": "m_minionLevel",
+    "write_minion_level": "m_minionLevel",
+    "is_accompany_npc": "m_isAccompanyNPC",
+    "write_is_accompany_npc": "m_isAccompanyNPC",
+    "hanging_effects": "m_hangingEffects",
+    "public_hanging_effects": "m_publicHangingEffects",
+    "aura_effects": "m_auraEffects",
+    "shadow_spell_effects": "m_shadowSpellEffects",
+    "death_activated_effects": "m_deathActivatedEffects",
+    "delay_cast_effects": "m_delayCastEffects",
+    "polymorph_spell_template_id": "m_polymorphSpellTemplateID",
+    "write_polymorph_spell_template_id": "m_polymorphSpellTemplateID",
+    "side": "m_side",
+    "write_side": "m_side",
+    "shadow_spells_disabled": "m_shadowSpellsDisabled",
+    "write_shadow_spells_disabled": "m_shadowSpellsDisabled",
+    "ignore_spells_pvp_only_flag": "m_ignoreSpellsPvPOnlyFlag",
+    "write_ignore_spells_pvp_only_flag": "m_ignoreSpellsPvPOnlyFlag",
+    "ignore_spells_pve_only_flag": "m_ignoreSpellsPvEOnlyFlag",
+    "write_ignore_spells_pve_only_flag": "m_ignoreSpellsPvEOnlyFlag",
+    "boss_mob": "m_bossMob",
+    "hide_pvp_enemy_chat": "m_hidePVPEnemyChat",
+    "write_hide_pvp_enemy_chat": "m_hidePVPEnemyChat",
+    "combat_trigger_ids": "m_combatTriggerIDs",
+    "write_combat_trigger_ids": "m_combatTriggerIDs",
+    "backlash": "m_backlash",
+    "write_backlash": "m_backlash",
+    "past_backlash": "m_pastBacklash",
+    "write_past_backlash": "m_pastBacklash",
+    "shadow_creature_level": "m_shadowCreatureLevel",
+    "write_shadow_creature_level": "m_shadowCreatureLevel",
+    "past_shadow_creature_level": "m_pastShadowCreatureLevel",
+    "write_past_shadow_creature_level": "m_pastShadowCreatureLevel",
+    "shadow_creature_level_count": "m_shadowCreatureLevelCount",
+    "write_shadow_creature_level_count": "m_shadowCreatureLevelCount",
+    "intercept_effect": "m_interceptEffect",
+    "rounds_since_shadow_pip": "m_roundsSinceShadowPip",
+    "write_rounds_since_shadow_pip": "m_roundsSinceShadowPip",
+    "polymorph_effect": "m_polymorphEffect",
+    "auto_pass": "m_autoPass",
+    "write_auto_pass": "m_autoPass",
+    "vanish": "m_vanish",
+    "write_vanish": "m_vanish",
+    "my_team_turn": "m_myTeamTurn",
+    "write_my_team_turn": "m_myTeamTurn",
+    "need_to_clean_auras": "m_needToCleanAuras",
+    "write_need_to_clean_auras": "m_needToCleanAuras",
+    "is_monster": "m_isMonster",
+    "write_is_monster": "m_isMonster",
+    "pet_combat_trigger": "m_petCombatTrigger",
+    "write_pet_combat_trigger": "m_petCombatTrigger",
+    "pet_combat_trigger_target": "m_petCombatTriggerTarget",
+    "write_pet_combat_trigger_target": "m_petCombatTriggerTarget",
+    "shadow_pip_rate_threshold": "m_shadowPipRateThreshold",
+    "write_shadow_pip_rate_threshold": "m_shadowPipRateThreshold",
+    "base_spell_damage": "m_baseSpellDamage",
+    "write_base_spell_damage": "m_baseSpellDamage",
+    "stat_damage": "m_statDamage",
+    "write_stat_damage": "m_statDamage",
+    "stat_resist": "m_statResist",
+    "write_stat_resist": "m_statResist",
+    "stat_pierce": "m_statPierce",
+    "write_stat_pierce": "m_statPierce",
+    "mob_level": "m_mobLevel",
+    "write_mob_level": "m_mobLevel",
+    "player_time_updated": "m_bPlayerTimeUpdated",
+    "write_player_time_updated": "m_bPlayerTimeUpdated",
+    "player_time_eliminated": "m_bPlayerTimeEliminated",
+    "write_player_time_eliminated": "m_bPlayerTimeEliminated",
+    "player_time_warning": "m_bPlayerTimeWarning",
+    "write_player_time_warning": "m_bPlayerTimeWarning",
+    "deck_fullness": "m_deckFullness",
+    "write_deck_fullness": "m_deckFullness",
+    "archmastery_points": "m_archmasteryPoints",
+    "write_archmastery_points": "m_archmasteryPoints",
+    "max_archmastery_points": "m_maxArchmasteryPoints",
+    "write_max_archmastery_points": "m_maxArchmasteryPoints",
+    "archmastery_school": "m_archmasterySchool",
+    "write_archmastery_school": "m_archmasterySchool",
+    "archmastery_flags": "m_archmasteryFlags",
+    "write_archmastery_flags": "m_archmasteryFlags",
+    "shadow_pact_target": "m_shadowPactTarget",
+    "write_shadow_pact_target": "m_shadowPactTarget",
+    "planning_phase_pip_aquired_type": "m_planningPhasePipAquiredType",
+    "write_planning_phase_pip_aquired_type": "m_planningPhasePipAquiredType"
+  },
+  "properties": {
+    "m_HideCurrentHP": {
+      "live": {
+        "offset": "0xfc",
+        "instruction_rva": "20213dd",
+        "name_rva": "0x2d8b1d8",
+        "instruction_bytes": "4c8d87fc000000"
+      },
+      "test": {
+        "offset": "0x104",
+        "instruction_rva": "1f97237",
+        "name_rva": "0x2ee0168",
+        "instruction_bytes": "4c8d8704010000"
+      }
+    },
+    "m_accuracyBonus": {
+      "live": {
+        "offset": "0x190",
+        "instruction_rva": "2021ae5",
+        "name_rva": "0x2d8b300",
+        "instruction_bytes": "4c8d8790010000"
+      },
+      "test": {
+        "offset": "0x198",
+        "instruction_rva": "1f97941",
+        "name_rva": "0x2ee0288",
+        "instruction_bytes": "4c8d8798010000"
+      }
+    },
+    "m_archmasteryFlags": {
+      "live": {
+        "offset": "0x384",
+        "instruction_rva": "20234b2",
+        "name_rva": "0x2d8b9c0",
+        "instruction_bytes": "4c8d8784030000"
+      },
+      "test": {
+        "offset": "0x37c",
+        "instruction_rva": "1f99235",
+        "name_rva": "0x2ee0960",
+        "instruction_bytes": "4c8d877c030000"
+      }
+    },
+    "m_archmasteryPoints": {
+      "live": {
+        "offset": "0x378",
+        "instruction_rva": "202342b",
+        "name_rva": "0x2d8b978",
+        "instruction_bytes": "4c8d8778030000"
+      },
+      "test": {
+        "offset": "0x370",
+        "instruction_rva": "1f991ae",
+        "name_rva": "0x2ee0918",
+        "instruction_bytes": "4c8d8770030000"
+      }
+    },
+    "m_archmasterySchool": {
+      "live": {
+        "offset": "0x380",
+        "instruction_rva": "2023485",
+        "name_rva": "0x2d8b9a8",
+        "instruction_bytes": "4c8d8780030000"
+      },
+      "test": {
+        "offset": "0x378",
+        "instruction_rva": "1f99208",
+        "name_rva": "0x2ee0948",
+        "instruction_bytes": "4c8d8778030000"
+      }
+    },
+    "m_auraEffects": {
+      "live": {
+        "offset": "0x1d0",
+        "instruction_rva": "2021d4c",
+        "name_rva": "0x2d8b390",
+        "instruction_bytes": "4c8d87d0010000"
+      },
+      "test": {
+        "offset": "0x1d8",
+        "instruction_rva": "1f97ba8",
+        "name_rva": "0x2ee0318",
+        "instruction_bytes": "4c8d87d8010000"
+      }
+    },
+    "m_autoPass": {
+      "live": {
+        "offset": "0x2e0",
+        "instruction_rva": "20229b9",
+        "name_rva": "0x2d8b650",
+        "instruction_bytes": "4c8d87e0020000"
+      },
+      "test": {
+        "offset": "0x2d8",
+        "instruction_rva": "1f98819",
+        "name_rva": "0x2ee05f0",
+        "instruction_bytes": "4c8d87d8020000"
+      }
+    },
+    "m_bPlayerTimeEliminated": {
+      "live": {
+        "offset": "0x371",
+        "instruction_rva": "20233a4",
+        "name_rva": "0x2d8b938",
+        "instruction_bytes": "4c8d8771030000"
+      },
+      "test": {
+        "offset": "0x369",
+        "instruction_rva": "1f99127",
+        "name_rva": "0x2ee08d8",
+        "instruction_bytes": "4c8d8769030000"
+      }
+    },
+    "m_bPlayerTimeUpdated": {
+      "live": {
+        "offset": "0x370",
+        "instruction_rva": "2023377",
+        "name_rva": "0x2d8b920",
+        "instruction_bytes": "4c8d8770030000"
+      },
+      "test": {
+        "offset": "0x368",
+        "instruction_rva": "1f990fa",
+        "name_rva": "0x2ee08c0",
+        "instruction_bytes": "4c8d8768030000"
+      }
+    },
+    "m_bPlayerTimeWarning": {
+      "live": {
+        "offset": "0x372",
+        "instruction_rva": "20233d1",
+        "name_rva": "0x2d8b950",
+        "instruction_bytes": "4c8d8772030000"
+      },
+      "test": {
+        "offset": "0x36a",
+        "instruction_rva": "1f99154",
+        "name_rva": "0x2ee08f0",
+        "instruction_bytes": "4c8d876a030000"
+      }
+    },
+    "m_backlash": {
+      "live": {
+        "offset": "0x2e4",
+        "instruction_rva": "2022173",
+        "name_rva": "0x2d8b4b8",
+        "instruction_bytes": "448d8be4020000"
+      },
+      "test": {
+        "offset": "0x2dc",
+        "instruction_rva": "1f97fcf",
+        "name_rva": "0x2ee0440",
+        "instruction_bytes": "448d8bdc020000"
+      }
+    },
+    "m_baseSpellDamage": {
+      "live": {
+        "offset": "0x35c",
+        "instruction_rva": "2023296",
+        "name_rva": "0x2d8b8c8",
+        "instruction_bytes": "4c8d875c030000"
+      },
+      "test": {
+        "offset": "0x354",
+        "instruction_rva": "1f99019",
+        "name_rva": "0x2ee0868",
+        "instruction_bytes": "4c8d8754030000"
+      }
+    },
+    "m_bossMob": {
+      "live": {
+        "offset": "0x2b3",
+        "instruction_rva": "2022068",
+        "name_rva": "0x2d8b478",
+        "instruction_bytes": "4c8d87b3020000"
+      },
+      "test": {
+        "offset": "0x2ab",
+        "instruction_rva": "1f97ec4",
+        "name_rva": "0x2ee0400",
+        "instruction_bytes": "4c8d87ab020000"
+      }
+    },
+    "m_combatTriggerIDs": {
+      "live": {
+        "offset": "0x2c8",
+        "instruction_rva": "20220c2",
+        "name_rva": "0x2d8b4a0",
+        "instruction_bytes": "4c8d87c8020000"
+      },
+      "test": {
+        "offset": "0x2c0",
+        "instruction_rva": "1f97f1e",
+        "name_rva": "0x2ee0428",
+        "instruction_bytes": "4c8d87c0020000"
+      }
+    },
+    "m_curMaxHP": {
+      "live": {
+        "offset": "0x19c",
+        "instruction_rva": "202148e",
+        "name_rva": "0x2d8b1e8",
+        "instruction_bytes": "448d8b9c010000"
+      },
+      "test": {
+        "offset": "0x1a4",
+        "instruction_rva": "1f972e8",
+        "name_rva": "0x2ee0178",
+        "instruction_bytes": "448d8ba4010000"
+      }
+    },
+    "m_deathActivatedEffects": {
+      "live": {
+        "offset": "0x210",
+        "instruction_rva": "2021f1b",
+        "name_rva": "0x2d8b3c8",
+        "instruction_bytes": "448d8b10020000"
+      },
+      "test": {
+        "offset": "0x208",
+        "instruction_rva": "1f97d77",
+        "name_rva": "0x2ee0350",
+        "instruction_bytes": "448d8b08020000"
+      }
+    },
+    "m_deckFullness": {
+      "live": {
+        "offset": "0x374",
+        "instruction_rva": "20233fe",
+        "name_rva": "0x2d8b968",
+        "instruction_bytes": "4c8d8774030000"
+      },
+      "test": {
+        "offset": "0x36c",
+        "instruction_rva": "1f99181",
+        "name_rva": "0x2ee0908",
+        "instruction_bytes": "4c8d876c030000"
+      }
+    },
+    "m_delayCastEffects": {
+      "live": {
+        "offset": "0x220",
+        "instruction_rva": "2021f5a",
+        "name_rva": "0x2d8b3e0",
+        "instruction_bytes": "4c8d8720020000"
+      },
+      "test": {
+        "offset": "0x218",
+        "instruction_rva": "1f97db6",
+        "name_rva": "0x2ee0368",
+        "instruction_bytes": "4c8d8718020000"
+      }
+    },
+    "m_hangingEffects": {
+      "live": {
+        "offset": "0x1b0",
+        "instruction_rva": "2021cf2",
+        "name_rva": "0x2d8b360",
+        "instruction_bytes": "4c8d87b0010000"
+      },
+      "test": {
+        "offset": "0x1b8",
+        "instruction_rva": "1f97b4e",
+        "name_rva": "0x2ee02e8",
+        "instruction_bytes": "4c8d87b8010000"
+      }
+    },
+    "m_hidePVPEnemyChat": {
+      "live": {
+        "offset": "0x2b4",
+        "instruction_rva": "2022095",
+        "name_rva": "0x2d8b488",
+        "instruction_bytes": "4c8d87b4020000"
+      },
+      "test": {
+        "offset": "0x2ac",
+        "instruction_rva": "1f97ef1",
+        "name_rva": "0x2ee0410",
+        "instruction_bytes": "4c8d87ac020000"
+      }
+    },
+    "m_ignoreSpellsPvEOnlyFlag": {
+      "live": {
+        "offset": "0x2b2",
+        "instruction_rva": "202203b",
+        "name_rva": "0x2d8b458",
+        "instruction_bytes": "4c8d87b2020000"
+      },
+      "test": {
+        "offset": "0x2aa",
+        "instruction_rva": "1f97e97",
+        "name_rva": "0x2ee03e0",
+        "instruction_bytes": "4c8d87aa020000"
+      }
+    },
+    "m_ignoreSpellsPvPOnlyFlag": {
+      "live": {
+        "offset": "0x2b1",
+        "instruction_rva": "202200e",
+        "name_rva": "0x2d8b438",
+        "instruction_bytes": "4c8d87b1020000"
+      },
+      "test": {
+        "offset": "0x2a9",
+        "instruction_rva": "1f97e6a",
+        "name_rva": "0x2ee03c0",
+        "instruction_bytes": "4c8d87a9020000"
+      }
+    },
+    "m_interceptEffect": {
+      "live": {
+        "offset": "0x310",
+        "instruction_rva": "202248e",
+        "name_rva": "0x2d8b530",
+        "instruction_bytes": "448d8b10030000"
+      },
+      "test": {
+        "offset": "0x308",
+        "instruction_rva": "1f982ec",
+        "name_rva": "0x2ee04b8",
+        "instruction_bytes": "448d8b08030000"
+      }
+    },
+    "m_isAccompanyNPC": {
+      "live": {
+        "offset": "0x1a8",
+        "instruction_rva": "2021cc5",
+        "name_rva": "0x2d8b348",
+        "instruction_bytes": "4c8d87a8010000"
+      },
+      "test": {
+        "offset": "0x1b0",
+        "instruction_rva": "1f97b21",
+        "name_rva": "0x2ee02d0",
+        "instruction_bytes": "4c8d87b0010000"
+      }
+    },
+    "m_isMinion": {
+      "live": {
+        "offset": "0x198",
+        "instruction_rva": "2021bd5",
+        "name_rva": "0x2d8b328",
+        "instruction_bytes": "4c8d8798010000"
+      },
+      "test": {
+        "offset": "0x1a0",
+        "instruction_rva": "1f97a31",
+        "name_rva": "0x2ee02b0",
+        "instruction_bytes": "4c8d87a0010000"
+      }
+    },
+    "m_isMonster": {
+      "live": {
+        "offset": "0x1a4",
+        "instruction_rva": "20230de",
+        "name_rva": "0x2d8b848",
+        "instruction_bytes": "4c8d87a4010000"
+      },
+      "test": {
+        "offset": "0x1ac",
+        "instruction_rva": "1f98e61",
+        "name_rva": "0x2ee07e8",
+        "instruction_bytes": "4c8d87ac010000"
+      }
+    },
+    "m_maxArchmasteryPoints": {
+      "live": {
+        "offset": "0x37c",
+        "instruction_rva": "2023458",
+        "name_rva": "0x2d8b990",
+        "instruction_bytes": "4c8d877c030000"
+      },
+      "test": {
+        "offset": "0x374",
+        "instruction_rva": "1f991db",
+        "name_rva": "0x2ee0930",
+        "instruction_bytes": "4c8d8774030000"
+      }
+    },
+    "m_maxHandSize": {
+      "live": {
+        "offset": "0x100",
+        "instruction_rva": "2021614",
+        "name_rva": "0x2d8b210",
+        "instruction_bytes": "448d8b00010000"
+      },
+      "test": {
+        "offset": "0x108",
+        "instruction_rva": "1f9746e",
+        "name_rva": "0x2ee01a0",
+        "instruction_bytes": "448d8b08010000"
+      }
+    },
+    "m_maxPlayerHealth": {
+      "live": {
+        "offset": "0xf8",
+        "instruction_rva": "202139e",
+        "name_rva": "0x2d8b1c0",
+        "instruction_bytes": "448d8bf8000000"
+      },
+      "test": {
+        "offset": "0x100",
+        "instruction_rva": "1f971f6",
+        "name_rva": "0x2ee0150",
+        "instruction_bytes": "448d8b00010000"
+      }
+    },
+    "m_minionLevel": {
+      "live": {
+        "offset": "0x38c",
+        "instruction_rva": "2021c86",
+        "name_rva": "0x2d8b338",
+        "instruction_bytes": "448d8b8c030000"
+      },
+      "test": {
+        "offset": "0x384",
+        "instruction_rva": "1f97ae2",
+        "name_rva": "0x2ee02c0",
+        "instruction_bytes": "448d8b84030000"
+      }
+    },
+    "m_minionStartingHealth": {
+      "live": {
+        "offset": "0x1a0",
+        "instruction_rva": "2021551",
+        "name_rva": "0x2d8b1f8",
+        "instruction_bytes": "448d8ba0010000"
+      },
+      "test": {
+        "offset": "0x1a8",
+        "instruction_rva": "1f973ab",
+        "name_rva": "0x2ee0188",
+        "instruction_bytes": "448d8ba8010000"
+      }
+    },
+    "m_minionSubCircle": {
+      "live": {
+        "offset": "0x194",
+        "instruction_rva": "2021b96",
+        "name_rva": "0x2d8b310",
+        "instruction_bytes": "448d8b94010000"
+      },
+      "test": {
+        "offset": "0x19c",
+        "instruction_rva": "1f979f2",
+        "name_rva": "0x2ee0298",
+        "instruction_bytes": "448d8b9c010000"
+      }
+    },
+    "m_mobLevel": {
+      "live": {
+        "offset": "0x36c",
+        "instruction_rva": "202334a",
+        "name_rva": "0x2d8b910",
+        "instruction_bytes": "4c8d876c030000"
+      },
+      "test": {
+        "offset": "0x364",
+        "instruction_rva": "1f990cd",
+        "name_rva": "0x2ee08b0",
+        "instruction_bytes": "4c8d8764030000"
+      }
+    },
+    "m_myTeamTurn": {
+      "live": {
+        "offset": "0x2e2",
+        "instruction_rva": "2022a13",
+        "name_rva": "0x2d8b670",
+        "instruction_bytes": "4c8d87e2020000"
+      },
+      "test": {
+        "offset": "0x2da",
+        "instruction_rva": "1f98873",
+        "name_rva": "0x2ee0610",
+        "instruction_bytes": "4c8d87da020000"
+      }
+    },
+    "m_nPolymorphTurnLength": {
+      "live": {
+        "offset": "0xf0",
+        "instruction_rva": "2021218",
+        "name_rva": "0x2d8b198",
+        "instruction_bytes": "448d8bf0000000"
+      },
+      "test": {
+        "offset": "0xf8",
+        "instruction_rva": "1f97070",
+        "name_rva": "0x2ee0128",
+        "instruction_bytes": "448d8bf8000000"
+      }
+    },
+    "m_needToCleanAuras": {
+      "live": {
+        "offset": "0x388",
+        "instruction_rva": "2022a40",
+        "name_rva": "0x2d8b680",
+        "instruction_bytes": "4c8d8788030000"
+      },
+      "test": {
+        "offset": "0x380",
+        "instruction_rva": "1f988a0",
+        "name_rva": "0x2ee0620",
+        "instruction_bytes": "4c8d8780030000"
+      }
+    },
+    "m_pGameStats": {
+      "live": {
+        "offset": "0x140",
+        "instruction_rva": "20218d5",
+        "name_rva": "0x2d8b298",
+        "instruction_bytes": "448d8b40010000"
+      },
+      "test": {
+        "offset": "0x148",
+        "instruction_rva": "1f9772f",
+        "name_rva": "0x2ee0228",
+        "instruction_bytes": "448d8b48010000"
+      }
+    },
+    "m_pHand": {
+      "live": {
+        "offset": "0x108",
+        "instruction_rva": "2021653",
+        "name_rva": "0x2d8b220",
+        "instruction_bytes": "4c8d8708010000"
+      },
+      "test": {
+        "offset": "0x110",
+        "instruction_rva": "1f974ad",
+        "name_rva": "0x2ee01b0",
+        "instruction_bytes": "4c8d8710010000"
+      }
+    },
+    "m_pPlayDeck": {
+      "live": {
+        "offset": "0x118",
+        "instruction_rva": "20216ad",
+        "name_rva": "0x2d8b238",
+        "instruction_bytes": "4c8d8718010000"
+      },
+      "test": {
+        "offset": "0x120",
+        "instruction_rva": "1f97507",
+        "name_rva": "0x2ee01c8",
+        "instruction_bytes": "4c8d8720010000"
+      }
+    },
+    "m_pSavedGameStats": {
+      "live": {
+        "offset": "0x128",
+        "instruction_rva": "202176d",
+        "name_rva": "0x2d8b260",
+        "instruction_bytes": "448d8b28010000"
+      },
+      "test": {
+        "offset": "0x130",
+        "instruction_rva": "1f975c7",
+        "name_rva": "0x2ee01f0",
+        "instruction_bytes": "448d8b30010000"
+      }
+    },
+    "m_pSavedHand": {
+      "live": {
+        "offset": "0x110",
+        "instruction_rva": "2021680",
+        "name_rva": "0x2d8b228",
+        "instruction_bytes": "4c8d8710010000"
+      },
+      "test": {
+        "offset": "0x118",
+        "instruction_rva": "1f974da",
+        "name_rva": "0x2ee01b8",
+        "instruction_bytes": "4c8d8718010000"
+      }
+    },
+    "m_pSavedPlayDeck": {
+      "live": {
+        "offset": "0x120",
+        "instruction_rva": "20216da",
+        "name_rva": "0x2d8b248",
+        "instruction_bytes": "4c8d8720010000"
+      },
+      "test": {
+        "offset": "0x128",
+        "instruction_rva": "1f97534",
+        "name_rva": "0x2ee01d8",
+        "instruction_bytes": "4c8d8728010000"
+      }
+    },
+    "m_pastBacklash": {
+      "live": {
+        "offset": "0x2e8",
+        "instruction_rva": "2022236",
+        "name_rva": "0x2d8b4c8",
+        "instruction_bytes": "448d8be8020000"
+      },
+      "test": {
+        "offset": "0x2e0",
+        "instruction_rva": "1f98094",
+        "name_rva": "0x2ee0450",
+        "instruction_bytes": "448d8be0020000"
+      }
+    },
+    "m_pastShadowCreatureLevel": {
+      "live": {
+        "offset": "0x2f0",
+        "instruction_rva": "20223bc",
+        "name_rva": "0x2d8b4f0",
+        "instruction_bytes": "448d8bf0020000"
+      },
+      "test": {
+        "offset": "0x2e8",
+        "instruction_rva": "1f9821a",
+        "name_rva": "0x2ee0478",
+        "instruction_bytes": "448d8be8020000"
+      }
+    },
+    "m_petCombatTrigger": {
+      "live": {
+        "offset": "0x2d8",
+        "instruction_rva": "202320f",
+        "name_rva": "0x2d8b870",
+        "instruction_bytes": "4c8d87d8020000"
+      },
+      "test": {
+        "offset": "0x2d0",
+        "instruction_rva": "1f98f92",
+        "name_rva": "0x2ee0810",
+        "instruction_bytes": "4c8d87d0020000"
+      }
+    },
+    "m_petCombatTriggerTarget": {
+      "live": {
+        "offset": "0x2dc",
+        "instruction_rva": "202323c",
+        "name_rva": "0x2d8b888",
+        "instruction_bytes": "4c8d87dc020000"
+      },
+      "test": {
+        "offset": "0x2d4",
+        "instruction_rva": "1f98fbf",
+        "name_rva": "0x2ee0828",
+        "instruction_bytes": "4c8d87d4020000"
+      }
+    },
+    "m_playerHealth": {
+      "live": {
+        "offset": "0xf4",
+        "instruction_rva": "20212db",
+        "name_rva": "0x2d8b1b0",
+        "instruction_bytes": "448d8bf4000000"
+      },
+      "test": {
+        "offset": "0xfc",
+        "instruction_rva": "1f97133",
+        "name_rva": "0x2ee0140",
+        "instruction_bytes": "448d8bfc000000"
+      }
+    },
+    "m_polymorphEffect": {
+      "live": {
+        "offset": "0x348",
+        "instruction_rva": "20225f6",
+        "name_rva": "0x2d8b560",
+        "instruction_bytes": "448d8b48030000"
+      },
+      "test": {
+        "offset": "0x340",
+        "instruction_rva": "1f98454",
+        "name_rva": "0x2ee04e8",
+        "instruction_bytes": "448d8b40030000"
+      }
+    },
+    "m_polymorphSpellTemplateID": {
+      "live": {
+        "offset": "0x250",
+        "instruction_rva": "2021f87",
+        "name_rva": "0x2d8b3f8",
+        "instruction_bytes": "4c8d8750020000"
+      },
+      "test": {
+        "offset": "0x248",
+        "instruction_rva": "1f97de3",
+        "name_rva": "0x2ee0380",
+        "instruction_bytes": "4c8d8748020000"
+      }
+    },
+    "m_publicHangingEffects": {
+      "live": {
+        "offset": "0x1c0",
+        "instruction_rva": "2021d1f",
+        "name_rva": "0x2d8b378",
+        "instruction_bytes": "4c8d87c0010000"
+      },
+      "test": {
+        "offset": "0x1c8",
+        "instruction_rva": "1f97b7b",
+        "name_rva": "0x2ee0300",
+        "instruction_bytes": "4c8d87c8010000"
+      }
+    },
+    "m_pvp": {
+      "live": {
+        "offset": "0x160",
+        "instruction_rva": "2021a5e",
+        "name_rva": "0x2d8b2dc",
+        "instruction_bytes": "4c8d8760010000"
+      },
+      "test": {
+        "offset": "0x168",
+        "instruction_rva": "1f978ba",
+        "name_rva": "0x2ee026c",
+        "instruction_bytes": "4c8d8768010000"
+      }
+    },
+    "m_radius": {
+      "live": {
+        "offset": "0x158",
+        "instruction_rva": "202196e",
+        "name_rva": "0x2d8b2c0",
+        "instruction_bytes": "4c8d8758010000"
+      },
+      "test": {
+        "offset": "0x160",
+        "instruction_rva": "1f977ca",
+        "name_rva": "0x2ee0250",
+        "instruction_bytes": "4c8d8760010000"
+      }
+    },
+    "m_raid": {
+      "live": {
+        "offset": "0x161",
+        "instruction_rva": "2021a8b",
+        "name_rva": "0x2d8b2e4",
+        "instruction_bytes": "4c8d8761010000"
+      },
+      "test": {
+        "offset": "0x169",
+        "instruction_rva": "1f978e7",
+        "name_rva": "0x2edf9ac",
+        "instruction_bytes": "4c8d8769010000"
+      }
+    },
+    "m_rotation": {
+      "live": {
+        "offset": "0x154",
+        "instruction_rva": "2021941",
+        "name_rva": "0x2d8b2b0",
+        "instruction_bytes": "4c8d8754010000"
+      },
+      "test": {
+        "offset": "0x15c",
+        "instruction_rva": "1f9779d",
+        "name_rva": "0x2ee0240",
+        "instruction_bytes": "4c8d875c010000"
+      }
+    },
+    "m_roundsSinceShadowPip": {
+      "live": {
+        "offset": "0x330",
+        "instruction_rva": "2022551",
+        "name_rva": "0x2d8b548",
+        "instruction_bytes": "448d8b30030000"
+      },
+      "test": {
+        "offset": "0x328",
+        "instruction_rva": "1f983af",
+        "name_rva": "0x2ee04d0",
+        "instruction_bytes": "448d8b28030000"
+      }
+    },
+    "m_savedPrimaryMagicSchoolID": {
+      "live": {
+        "offset": "0x138",
+        "instruction_rva": "2021830",
+        "name_rva": "0x2d8b278",
+        "instruction_bytes": "448d8b38010000"
+      },
+      "test": {
+        "offset": "0x140",
+        "instruction_rva": "1f9768a",
+        "name_rva": "0x2ee0208",
+        "instruction_bytes": "448d8b40010000"
+      }
+    },
+    "m_shadowCreatureLevel": {
+      "live": {
+        "offset": "0x2ec",
+        "instruction_rva": "20222f9",
+        "name_rva": "0x2d8b4d8",
+        "instruction_bytes": "448d8bec020000"
+      },
+      "test": {
+        "offset": "0x2e4",
+        "instruction_rva": "1f98157",
+        "name_rva": "0x2ee0460",
+        "instruction_bytes": "448d8be4020000"
+      }
+    },
+    "m_shadowCreatureLevelCount": {
+      "live": {
+        "offset": "0x2f8",
+        "instruction_rva": "20223fb",
+        "name_rva": "0x2d8b510",
+        "instruction_bytes": "4c8d87f8020000"
+      },
+      "test": {
+        "offset": "0x2f0",
+        "instruction_rva": "1f98259",
+        "name_rva": "0x2ee0498",
+        "instruction_bytes": "4c8d87f0020000"
+      }
+    },
+    "m_shadowPactTarget": {
+      "live": {
+        "offset": "0x188",
+        "instruction_rva": "20234df",
+        "name_rva": "0x2d8b9d8",
+        "instruction_bytes": "4c8d8788010000"
+      },
+      "test": {
+        "offset": "0x190",
+        "instruction_rva": "1f99262",
+        "name_rva": "0x2ee0978",
+        "instruction_bytes": "4c8d8790010000"
+      }
+    },
+    "m_shadowPipRateThreshold": {
+      "live": {
+        "offset": "0x358",
+        "instruction_rva": "2023269",
+        "name_rva": "0x2d8b8a8",
+        "instruction_bytes": "4c8d8758030000"
+      },
+      "test": {
+        "offset": "0x350",
+        "instruction_rva": "1f98fec",
+        "name_rva": "0x2ee0848",
+        "instruction_bytes": "4c8d8750030000"
+      }
+    },
+    "m_shadowSpellEffects": {
+      "live": {
+        "offset": "0x1f0",
+        "instruction_rva": "2021e80",
+        "name_rva": "0x2d8b3b0",
+        "instruction_bytes": "4c8d87f0010000"
+      },
+      "test": {
+        "offset": "0x1f8",
+        "instruction_rva": "1f97cdc",
+        "name_rva": "0x2ee0338",
+        "instruction_bytes": "4c8d87f8010000"
+      }
+    },
+    "m_shadowSpellsDisabled": {
+      "live": {
+        "offset": "0x2b0",
+        "instruction_rva": "2021fe1",
+        "name_rva": "0x2d8b420",
+        "instruction_bytes": "4c8d87b0020000"
+      },
+      "test": {
+        "offset": "0x2a8",
+        "instruction_rva": "1f97e3d",
+        "name_rva": "0x2ee03a8",
+        "instruction_bytes": "4c8d87a8020000"
+      }
+    },
+    "m_side": {
+      "live": {
+        "offset": "0x268",
+        "instruction_rva": "2021fb4",
+        "name_rva": "0x2d8b414",
+        "instruction_bytes": "4c8d8768020000"
+      },
+      "test": {
+        "offset": "0x260",
+        "instruction_rva": "1f97e10",
+        "name_rva": "0x2ee039c",
+        "instruction_bytes": "4c8d8760020000"
+      }
+    },
+    "m_statDamage": {
+      "live": {
+        "offset": "0x360",
+        "instruction_rva": "20232c3",
+        "name_rva": "0x2d8b8e0",
+        "instruction_bytes": "4c8d8760030000"
+      },
+      "test": {
+        "offset": "0x358",
+        "instruction_rva": "1f99046",
+        "name_rva": "0x2ee0880",
+        "instruction_bytes": "4c8d8758030000"
+      }
+    },
+    "m_statPierce": {
+      "live": {
+        "offset": "0x368",
+        "instruction_rva": "202331d",
+        "name_rva": "0x2d8b900",
+        "instruction_bytes": "4c8d8768030000"
+      },
+      "test": {
+        "offset": "0x360",
+        "instruction_rva": "1f990a0",
+        "name_rva": "0x2ee08a0",
+        "instruction_bytes": "4c8d8760030000"
+      }
+    },
+    "m_statResist": {
+      "live": {
+        "offset": "0x364",
+        "instruction_rva": "20232f0",
+        "name_rva": "0x2d8b8f0",
+        "instruction_bytes": "4c8d8764030000"
+      },
+      "test": {
+        "offset": "0x35c",
+        "instruction_rva": "1f99073",
+        "name_rva": "0x2ee0890",
+        "instruction_bytes": "4c8d875c030000"
+      }
+    },
+    "m_vanish": {
+      "live": {
+        "offset": "0x2e1",
+        "instruction_rva": "20229e6",
+        "name_rva": "0x2d8b660",
+        "instruction_bytes": "4c8d87e1020000"
+      },
+      "test": {
+        "offset": "0x2d9",
+        "instruction_rva": "1f98846",
+        "name_rva": "0x2ee0600",
+        "instruction_bytes": "4c8d87d9020000"
+      }
+    },
+    "m_planningPhasePipAquiredType": {
+      "live": {
+        "offset": "0x340",
+        "instruction_rva": "2022a6d",
+        "name_rva": "0x2d8b698",
+        "instruction_bytes": "4c8d8740030000"
+      },
+      "test": {
+        "offset": "0x338",
+        "instruction_rva": "1f988cd",
+        "name_rva": "0x2ee0638",
+        "instruction_bytes": "4c8d8738030000"
+      }
+    }
+  }
+}

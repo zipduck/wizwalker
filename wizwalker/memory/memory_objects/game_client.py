@@ -14,19 +14,30 @@ from .gamebryo_presenter import DynamicGamebryoPresenter
 from .fishing_manager import FishingManager
 
 
+# One native camera-toggle path supplies all related members and the switch slot.
+# Do not silently fall back to a layout from a different game build.
+CAMERA_TOGGLE_PATTERN = (
+    rb"\x48\x8B\x93....\x48\x8B\x03\x4C\x8B\x88...."
+    rb"\x41\xB8\x01\x00\x00\x00\x48\x8B\xCB\x48\x3B\xFA\x75\x0E"
+    rb"\x48\x8B\x93....\x41\xFF\xD1\x32\xC0\xEB\x05\x41\xFF\xD1\xB0\x01"
+    rb"\x88\x83....\x48\x8B\x07\x33\xD2\x48\x8B\xCF\xFF\x50\x70"
+    rb"\x48\x8B\x8B....\x48\x8B\x01\xB2\x01\xFF\x50\x70"
+)
+
+
 # note: not defined
 class GameClient(MemoryObject):
     async def read_base_address(self) -> int:
         raise NotImplementedError()
 
+    async def camera_switch_vtable_offset(self) -> int:
+        return await self.pattern_scan_offset_cached(
+            CAMERA_TOGGLE_PATTERN, 13, "camera_switch_vtable_offset"
+        )
+
     async def elastic_camera_controller(self) -> Optional[DynamicElasticCameraController]:
         offset = await self.pattern_scan_offset_cached(
-            rb"\x48\x8B\x93\xD8\x1F\x02\x00\x41\xFF\xD1\x32"
-            rb"\xC0\xEB\x05\x41\xFF\xD1\xB0\x01\x88\x83\x20"
-            rb"\x20\x02\x00\x48\x8B\x07\x33\xD2\x48\x8B\xCF",
-            3,
-            "elastic_camera_controller",
-            0x222C8
+            CAMERA_TOGGLE_PATTERN, 34, "elastic_camera_controller"
         )
 
         addr = await self.read_value_from_offset(offset, Primitive.uint64)
@@ -38,11 +49,7 @@ class GameClient(MemoryObject):
 
     async def free_camera_controller(self) -> Optional[DynamicFreeCameraController]:
         offset = await self.pattern_scan_offset_cached(
-            rb"\x48\x8B\x93....\x48\x8B\x03\x4C\x8B\x88...."
-            rb"\x41\xB8\x01\x00\x00\x00\x48\x8B\xCB\x48\x3B\xFA\x75",
-            3,
-            "free_camera_controller",
-            0x222D8
+            CAMERA_TOGGLE_PATTERN, 3, "free_camera_controller"
         )
 
         addr = await self.read_value_from_offset(offset, Primitive.uint64)
@@ -57,12 +64,7 @@ class GameClient(MemoryObject):
         The in use camera controller
         """
         offset = await self.pattern_scan_offset_cached(
-            rb"\x48\x89\x87\x08\x20\x02\x00\x48\x8D\x8F"
-            rb"\x10\x20\x02\x00\x48\x8D\x54\x24\x40\xE8"
-            rb"....\x90\x48\x8B\x4C\x24",
-            3,
-            "selected_camera_controller",
-            0x222F8
+            CAMERA_TOGGLE_PATTERN, 70, "selected_camera_controller"
         )
 
         addr = await self.read_value_from_offset(offset, Primitive.uint64)
@@ -80,12 +82,7 @@ class GameClient(MemoryObject):
             selected_camera_controller = await selected_camera_controller.read_base_address()
 
         offset = await self.pattern_scan_offset_cached(
-            rb"\x48\x89\x87\x08\x20\x02\x00\x48\x8D\x8F"
-            rb"\x10\x20\x02\x00\x48\x8D\x54\x24\x40\xE8"
-            rb"....\x90\x48\x8B\x4C\x24",
-            3,
-            "selected_camera_controller",
-            0x222F8
+            CAMERA_TOGGLE_PATTERN, 70, "selected_camera_controller"
         )
 
         await self.write_value_to_offset(offset, selected_camera_controller, Primitive.uint64)
@@ -95,12 +92,7 @@ class GameClient(MemoryObject):
         If the game is currently in freecam mode
         """
         offset = await self.pattern_scan_offset_cached(
-            rb"\x0F\xB6\x88\x20\x20\x02\x00\x88\x8B\x6A"
-            rb"\x02\x00\x00\x84\xC9\x0F\x85....\x48\x8D"
-            rb"\x55\xE0\x48\x8B\xCB\xE8",
-            3,
-            "is_freecam",
-            0x22310
+            CAMERA_TOGGLE_PATTERN, 52, "is_freecam"
         )
         return await self.read_value_from_offset(offset, Primitive.bool)
 
@@ -109,12 +101,7 @@ class GameClient(MemoryObject):
         Write if the game is currently in freecam mode
         """
         offset = await self.pattern_scan_offset_cached(
-            rb"\x0F\xB6\x88\x20\x20\x02\x00\x88\x8B\x6A"
-            rb"\x02\x00\x00\x84\xC9\x0F\x85....\x48\x8D"
-            rb"\x55\xE0\x48\x8B\xCB\xE8",
-            3,
-            "is_freecam",
-            0x22310
+            CAMERA_TOGGLE_PATTERN, 52, "is_freecam"
         )
         await self.write_value_to_offset(offset, is_freecam, Primitive.bool)
 

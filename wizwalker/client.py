@@ -583,8 +583,8 @@ class Client:
         if not self.hook_handler._check_if_hook_active(DropsToggleHook):
             raise RuntimeError("Drops toggle not active")
 
-        if not self._disable_drops_bool:
-            self._disable_drops_bool = await self.hook_handler.read_disable_drops_bool()
+        # A reinstalled hook owns a new export; never reuse a freed flag address.
+        self._disable_drops_bool = await self.hook_handler.read_disable_drops_bool()
 
         await self.hook_handler.write_bytes(
             self._disable_drops_bool, 
@@ -595,8 +595,7 @@ class Client:
         if not self.hook_handler._check_if_hook_active(DropsToggleHook):
             raise RuntimeError("Drops toggle not active")
 
-        if not self._disable_drops_bool:
-            self._disable_drops_bool = await self.hook_handler.read_disable_drops_bool()
+        self._disable_drops_bool = await self.hook_handler.read_disable_drops_bool()
 
         await self.hook_handler.write_bytes(
             self._disable_drops_bool, 
@@ -611,14 +610,25 @@ class Client:
             return self._je_instruction_forward_backwards
 
         movement_state_instruction_addr = await self.hook_handler.pattern_scan(
-            rb"\x8B\x5F\x70\xF3",
+            rb"\x8B\x5F\x70\xF3\x44\x0F\x10\x25....\x83\xE3\x03"
+            rb"\x0F\x84....\x83\xFB\x03\x0F\x84....",
             module="WizardGraphicalClient.exe"
         )
 
-        self._je_instruction_forward_backwards = (
+        branches = (
             movement_state_instruction_addr + 15,
             movement_state_instruction_addr + 24,
         )
+
+        targets = []
+        for address in branches:
+            instruction = await self.hook_handler.read_bytes(address, 6)
+            if instruction[:2] != b"\x0F\x84":
+                raise RuntimeError("Movement gate is not a six-byte JE")
+            targets.append(address + 6 + struct.unpack("<i", instruction[2:])[0])
+        if targets[0] != targets[1]:
+            raise RuntimeError("Movement gates do not share an exit")
+        self._je_instruction_forward_backwards = branches
 
         return self._je_instruction_forward_backwards
 
@@ -677,6 +687,8 @@ class Client:
 
         movement_update_address = await self._get_movement_update_address()
         self._movement_update_original_bytes = await self.hook_handler.read_bytes(movement_update_address, 3)
+        if self._movement_update_original_bytes != b"\xFF\x50\x70":
+            raise RuntimeError("Freecam movement call differs from the reviewed instruction")
         # 3x nop
         await self.hook_handler.write_bytes(movement_update_address, b"\x90\x90\x90")
 
@@ -696,7 +708,7 @@ class Client:
             return self._movement_update_address
 
         self._movement_update_address = await self.hook_handler.pattern_scan(
-            rb"\xFF\x50.\x48\x8B\x83....\x48\x8D..\x48\x2B",
+            rb"\xFF\x50\x70\x48\x8B\x83....\x48\x8D..\x48\x2B",
             module="WizardGraphicalClient.exe"
         )
 
@@ -721,6 +733,10 @@ class Client:
 
         packed_new_camera_address = _pack(new_camera_address)
         packed_old_camera_address = _pack(old_camera_address)
+        switch_offset = await self.game_client.camera_switch_vtable_offset()
+        if switch_offset <= 0 or switch_offset % 8:
+            raise RuntimeError("Camera switch is not an aligned vtable slot")
+        packed_switch_offset = struct.pack("<I", switch_offset)
 
         # fmt: off
         shellcode = (
@@ -730,23 +746,15 @@ class Client:
                 b"\x52"  # push rdx
                 b"\x41\x50"  # push r8
                 b"\x41\x51"  # push r9
+                b"\x48\x83\xEC\x20"  # Win64 shadow space; calls remain 16-byte aligned
 
                 # call set_cam(client, new_cam, ?, cam_swap_fn)
                 b"\x48\xB9" + packed_game_client_address +  # mov rcx, client_addr
                 b"\x48\xBA" + packed_new_camera_address +  # mov rdx, new_cam_addr
                 b"\x49\xC7\xC0\x01\x00\x00\x00"  # mov r8, 0x1
                 b"\x48\x8B\x01"  # mov rax, [rcx]
-                b"\x48\x8B\x80\x78\x04\x00\x00"  # mov rax, [rax+0x478]
+                b"\x48\x8B\x80" + packed_switch_offset +  # native set-camera vtable slot
                 b"\x49\x89\xC1"  # mov r9, rax
-                b"\xFF\xD0"  # call rax
-
-                # call register_input_handlers(cam, active) [new_cam]
-                b"\x48\xB9" + packed_game_client_address +  # mov rcx, client_addr
-                b"\x48\xB8" + packed_new_camera_address +  # mov rax, new_cam_addr
-                b"\x48\x89\xC1"  # mov rcx, rax
-                b"\x48\x8B\x01"  # mov rax, [rcx]
-                b"\x48\x8B\x40\x70"  # mov rax, [rax+0x70]
-                b"\x48\xC7\xC2\x01\x00\x00\x00"  # mov rdx, 1
                 b"\xFF\xD0"  # call rax
 
                 # call register_input_handlers(cam, active) [old_cam]
@@ -758,7 +766,17 @@ class Client:
                 b"\x48\xC7\xC2\x00\x00\x00\x00"  # mov rdx, 0
                 b"\xFF\xD0"  # call rax
 
+                # call register_input_handlers(cam, active) [new_cam]
+                b"\x48\xB9" + packed_game_client_address +  # mov rcx, client_addr
+                b"\x48\xB8" + packed_new_camera_address +  # mov rax, new_cam_addr
+                b"\x48\x89\xC1"  # mov rcx, rax
+                b"\x48\x8B\x01"  # mov rax, [rcx]
+                b"\x48\x8B\x40\x70"  # mov rax, [rax+0x70]
+                b"\x48\xC7\xC2\x01\x00\x00\x00"  # mov rdx, 1
+                b"\xFF\xD0"  # call rax
+
                 # cleanup
+                b"\x48\x83\xC4\x20"  # release shadow space
                 b"\x41\x59"  # pop r9
                 b"\x41\x58"  # pop r8
                 b"\x5A"  # pop rdx

@@ -278,10 +278,12 @@ class ChatOwner(MemoryObject):
     async def add_player(self, target_gid: int):
         """Send a buddy/friend request to a player.
 
+        Enable with hook_handler.activate_friend_request_hook() when only
+        friend requests are needed; this does not resolve or enable chat sending.
         Writes the target GID to the ChatSendHook's buddy_obj export
         at offset 0xE0, then sets buddy_trigger. The main-thread hook
         reads the GID, sets up a fake BuddyListManager with the
-        GameClient pointer, and calls FUN_141710e10.
+        GameClient pointer, and calls the uniquely resolved friend-add function.
 
         Args:
             target_gid: The target player's GID to send a friend request to
@@ -293,8 +295,8 @@ class ChatOwner(MemoryObject):
         obj_addr = self.hook_handler._base_addrs.get("buddy_obj")
         if trigger_addr is None or obj_addr is None:
             raise RuntimeError(
-                "ChatSendHook not active. Call "
-                "hook_handler.activate_chat_send_hook() first."
+                "Friend request hook not active. Call "
+                "hook_handler.activate_friend_request_hook() first."
             )
 
         # Write target GID at offset 0xE0 in the buddy_obj export.

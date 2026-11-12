@@ -5,7 +5,7 @@ import regex
 import pymem.process
 
 from wizwalker.constants import Primitive
-from wizwalker.errors import PatternFailed
+from wizwalker.errors import MemoryReadError, PatternFailed
 from wizwalker.memory.memory_object import DynamicMemoryObject, PropertyClass
 from wizwalker.memory.handler import HookHandler
 from .unlock_trigger_list import DynamicUnlockTriggerList
@@ -44,34 +44,16 @@ from .adventure_party_list import DynamicAdventurePartyList
 
 _EXE_NAME = "WizardGraphicalClient.exe"
 
-# Constructor triple-vtable-write pattern (patch-survivable).
-#
-# The SSM constructor writes three vtable pointers in consecutive
-# LEA RAX,[rip+disp32] / MOV pairs immediately after base-class init:
-#
-#   LEA RAX, [rip+disp32]    ; main vtable (obj+0x00)
-#   MOV [RDI], RAX
-#   LEA RAX, [rip+disp32]    ; MessageHandler sub-vtable (obj+0x48)
-#   MOV [RSI], RAX            ; RSI was set to RDI+0x48 earlier
-#   LEA RAX, [rip+disp32]    ; third sub-vtable (obj+0x68)
-#   MOV [RDI+0x68], RAX
-#
-# The fixed opcode bytes are stable across patches — only the disp32
-# operands change as vtables shift in .rdata. This three-write sequence
-# (targeting [RDI], [RSI], and [RDI+0x68]) is unique to the SSM
-# constructor and serves as a reliable anchor for extracting the vtable
-# address at runtime.
+# Reviewed test constructor: RSI is the object and R14 is object+0x48.
+# Register allocation changed from live's RDI/RSI. This signature is build
+# dependent; a matching sequence alone does not validate the field layout.
 _SSM_CONSTRUCTOR_PATTERN = (
-    b"\x48\x8D\x05"        # LEA RAX, [rip+disp32]  (main vtable)
-    b"...."                 # disp32 wildcard
-    b"\x48\x89\x07"        # MOV [RDI], RAX
-    b"\x48\x8D\x05"        # LEA RAX, [rip+disp32]  (secondary vtable)
-    b"...."                 # disp32 wildcard
-    b"\x48\x89\x06"        # MOV [RSI], RAX
-    b"\x48\x8D\x05"        # LEA RAX, [rip+disp32]  (third vtable)
-    b"...."                 # disp32 wildcard
-    b"\x48\x89\x47\x68"    # MOV [RDI+0x68], RAX
+    rb"\x48\x8D\x05....\x48\x89\x06"
+    rb"\x48\x8D\x05....\x49\x89\x06"
+    rb"\x48\x8D\x05....\x48\x89\x46\x68"
 )
+_SSM_NAME_PROBE_OFFSET = 0x537
+_SSM_EXPECTED_NAME = b"SocialSystemsManager::MSG_SetFriendlyPlayer\x00"
 
 
 class SocialSystemsManager(PropertyClass):
@@ -225,141 +207,86 @@ class DynamicSocialSystemsManager(DynamicMemoryObject, SocialSystemsManager):
 
 
 class CurrentSocialSystemsManager(SocialSystemsManager):
-    """Finds the live SocialSystemsManager singleton via constructor pattern.
+    """Read-only constructor/vtable discovery of the current social manager.
 
-    Why the singleton getter's cached global doesn't work
-    =====================================================
-    The SSM has getter functions (e.g. FUN_14122bb40, FUN_141203ea0, r792258) that
-    look like standard singleton accessors — they check a lock flag, call a
-    registry lookup, and store the result to a global (e.g. DAT_14328de88).
-    However, these getters are never called at runtime. The initialization
-    lock flag stays 0 and the code path that would populate the global is
-    never executed.
-
-    Instead, the SSM is created directly by a parent object's constructor
-    (FUN_1412c6570, r792258) and stored at parent+0x23280 via shared_ptr. It lives on
-    the heap at an arbitrary address that the getter's global never learns
-    about. Pattern scanning for the getter code correctly locates the global
-    address, but reading from it always returns 0 — hence the MemoryReadError
-    at address 0x100 (base=0, offset=0x100).
-
-    Why not hardcode vtable RVAs
-    ============================
-    The vtable RVA (e.g. 0x2B3A700) changes with every game patch as code
-    and data are recompiled and relocated. Hardcoded RVAs require manual
-    updates after each patch.
-
-    Why not RTTI
-    ============
-    SocialSystemsManager has no standard MSVC RTTI TypeDescriptor
-    (.?AVSocialSystemsManager@@). Only a pointer-type descriptor
-    (.PEAVSocialSystemsManager@@) exists, which is used for exception
-    handling, not for vtable discovery. RTTI-based approaches fail for
-    this class.
-
-    Constructor pattern approach (patch-survivable)
-    ================================================
-    The SSM constructor writes three vtable pointers in three consecutive
-    LEA RAX,[rip+disp32] / MOV pairs:
-
-      1. LEA RAX,[rip+disp32]; MOV [RDI],RAX       — main vtable at +0x00
-      2. LEA RAX,[rip+disp32]; MOV [RSI],RAX       — sub-vtable at +0x48
-      3. LEA RAX,[rip+disp32]; MOV [RDI+0x68],RAX  — sub-vtable at +0x68
-
-    This triple-write pattern is unique in the binary. The fixed opcode bytes
-    (LEA/MOV encodings, target registers, displacement) are stable across
-    patches — only the disp32 operands change as vtables shift in .rdata.
-
-    From the match we extract the first LEA's disp32 to compute the main
-    vtable address, then scan process memory for an 8-byte pointer to that
-    vtable to find the heap-allocated SSM object. The result is cached.
+    The historical singleton getter cache was not populated in the observed
+    clients. Discover the heap object using all three constructor vtables,
+    reject ambiguity, and revalidate a cached object before each use. No
+    fallback to a first match or an address inside the executable is allowed.
+    This validates object identity, not every party/guild field or payload.
     """
 
     def __init__(self, hook_handler: HookHandler):
         super().__init__(hook_handler)
         self._ssm_addr = None
+        self._ssm_vtables = None
+        self._ssm_module_range = None
 
     async def read_base_address(self) -> int:
-        if self._ssm_addr is None:
-            self._ssm_addr = await self._find_ssm_via_constructor_pattern()
+        if self._ssm_addr is not None:
+            if await self._is_ssm_candidate(self._ssm_addr):
+                return self._ssm_addr
+            self._ssm_addr = None
+        self._ssm_addr = await self._find_ssm_via_constructor_pattern()
         return self._ssm_addr
 
+    async def _is_ssm_candidate(self, address: int) -> bool:
+        start, end = self._ssm_module_range
+        if not address or address % 8 or start <= address < end:
+            return False
+        try:
+            # One bounded read includes all three vptrs, including the third
+            # base at +0x68 that the previous locator never checked.
+            data = await self.hook_handler.read_bytes(address, 0x70)
+        except MemoryReadError:
+            return False
+        return all(struct.unpack_from("<Q", data, offset)[0] == expected
+                   for offset, expected in zip((0, 0x48, 0x68), self._ssm_vtables))
+
     async def _find_ssm_via_constructor_pattern(self) -> int:
-        """Locate the SSM singleton via constructor vtable pattern + heap scan."""
         module = pymem.process.module_from_name(
             self.hook_handler.process.process_handle, _EXE_NAME
         )
         if module is None:
             raise RuntimeError(f"{_EXE_NAME} module not found")
-        module_base = module.lpBaseOfDll
-        module_end = module_base + module.SizeOfImage
-
-        # Step 1: Find the constructor's triple vtable write pattern.
-        # This matches the unique sequence of three consecutive LEA/MOV
-        # pairs that write vtable pointers to obj+0, obj+0x48, obj+0x68.
-        match_addr = await self.hook_handler.pattern_scan(
-            _SSM_CONSTRUCTOR_PATTERN,
-            module=_EXE_NAME,
+        start, end = module.lpBaseOfDll, module.lpBaseOfDll + module.SizeOfImage
+        match = await self.hook_handler.pattern_scan(
+            _SSM_CONSTRUCTOR_PATTERN, module=_EXE_NAME
         )
+        probe = match + _SSM_NAME_PROBE_OFFSET
+        if not start <= match < probe + 7 <= end:
+            raise RuntimeError("SocialSystemsManager constructor outside module")
+        instruction = await self.hook_handler.read_bytes(probe, 7)
+        if instruction[:3] != b"\x48\x8d\x15":
+            raise RuntimeError("SocialSystemsManager constructor name probe changed")
+        name = probe + 7 + struct.unpack_from("<i", instruction, 3)[0]
+        if not start <= name <= end - len(_SSM_EXPECTED_NAME):
+            raise RuntimeError("SocialSystemsManager constructor name outside module")
+        if await self.hook_handler.read_bytes(name, len(_SSM_EXPECTED_NAME)) != _SSM_EXPECTED_NAME:
+            raise RuntimeError("SocialSystemsManager constructor name mismatch")
 
-        # Step 2: Extract the main vtable address from the first LEA.
-        # LEA RAX, [rip+disp32] is at match_addr (bytes 0-6):
-        #   48 8D 05 [disp32]
-        # The disp32 is a signed 32-bit offset relative to the next
-        # instruction (match_addr + 7).
-        disp32_bytes = await self.hook_handler.read_bytes(match_addr + 3, 4)
-        disp32 = struct.unpack("<i", disp32_bytes)[0]
-        vtable_addr = (match_addr + 7) + disp32
-
-        # Sanity check: the vtable must be within the module's address space.
-        if not (module_base <= vtable_addr < module_end):
-            raise RuntimeError(
-                f"Extracted vtable address 0x{vtable_addr:X} is outside "
-                f"module range [0x{module_base:X}, 0x{module_end:X})"
-            )
-
-        # Step 3: Scan all process memory for the 8-byte vtable pointer to
-        # find the heap-allocated SSM object. Filter out hits inside the
-        # module itself (.rdata vtable references, code pointers).
-        vtable_pattern = regex.escape(struct.pack("<Q", vtable_addr))
+        sequence = await self.hook_handler.read_bytes(match, 31)
+        vtables = tuple(match + offset + 7 + struct.unpack_from("<i", sequence, offset + 3)[0]
+                        for offset in (0, 10, 20))
+        if len(set(vtables)) != 3 or any(v % 8 or not start <= v <= end - 8 for v in vtables):
+            raise RuntimeError("SocialSystemsManager constructor vtables invalid")
+        self._ssm_vtables = vtables
+        self._ssm_module_range = (start, end)
         try:
-            all_matches = await self.hook_handler.pattern_scan(
-                vtable_pattern, return_multiple=True
+            matches = await self.hook_handler.pattern_scan(
+                regex.escape(struct.pack("<Q", vtables[0])), return_multiple=True
             )
         except PatternFailed:
+            matches = []
+        if isinstance(matches, int):
+            matches = [matches]
+        candidates = []
+        for address in set(matches):
+            if await self._is_ssm_candidate(address):
+                candidates.append(address)
+        if len(candidates) != 1:
             raise RuntimeError(
-                "SocialSystemsManager object not found in process memory — "
-                "the game may not be fully loaded yet"
+                f"Expected one SocialSystemsManager object; found {len(candidates)} "
+                "validated candidates. The client may be loading or the layout has changed."
             )
-        if isinstance(all_matches, int):
-            all_matches = [all_matches]
-
-        # Filter out hits inside the module (.rdata vtable references)
-        heap_hits = [
-            a for a in all_matches if a < module_base or a >= module_end
-        ]
-
-        if len(heap_hits) == 1:
-            return heap_hits[0]
-
-        # Multiple candidates — validate via the MessageHandler sub-vtable
-        # at +0x48. A real SSM object has a second vtable pointer here that
-        # points back into the module's .rdata section.
-        candidates = heap_hits if heap_hits else all_matches
-        for addr in candidates:
-            try:
-                sub_vtable = await self.hook_handler.read_typed(
-                    addr + 0x48, Primitive.uint64
-                )
-                if module_base <= sub_vtable < module_end:
-                    return addr
-            except Exception:
-                continue
-
-        if candidates:
-            return candidates[0]
-
-        raise RuntimeError(
-            "SocialSystemsManager object not found in process memory — "
-            "the game may not be fully loaded yet"
-        )
+        return candidates[0]

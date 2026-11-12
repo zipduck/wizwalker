@@ -32,14 +32,17 @@ class HookHandler(MemoryReader):
     """
 
     AUTOBOT_PATTERN = (
-        rb"\x48\x89\x5C\x24.\x48\x89\x74\x24.\x48\x89\x7C\x24."
-        rb"\x55\x41\x54\x41\x55\x41\x56\x41\x57"
-        rb"\x48\x8D\xAC\x24....\x48\x81\xEC...."
-        rb"\x48\x8B\x05....\x48\x33\xC4\x48\x89\x85...."
-        rb"\x4C\x8B\xF1.......\x80......\x0F\x84...."
+        rb"\x48\x8B\xC4\x55\x41\x54\x41\x55\x41\x56\x41\x57"
+        rb"\x48\x8D\xA8\x18\xFE\xFF\xFF\x48\x81\xEC\xC0\x02\x00\x00"
+        rb"\x48\xC7\x45\xC8\xFE\xFF\xFF\xFF"
+        rb"\x48\x89\x58\x10\x48\x89\x70\x18\x48\x89\x78\x20"
+        rb"\x48\x8B\x05....\x48\x33\xC4\x48\x89\x85\xB0\x01\x00\x00"
+        rb"\x4C\x8B\xE9\x48\x8B\x05....\x80\xB8\xCE\x1D\x02\x00\x00\x0F\x84...."
     )
-    # rounded down
-    AUTOBOT_SIZE = 4100
+    # October 2026 test realm: .pdata bounds are RVA 1701AA0..1702A27
+    # (3975 bytes). Keep the scratch region inside this function; live's
+    # former 4100-byte reservation would overwrite the following function.
+    AUTOBOT_SIZE = 3900
 
     def __init__(self, process: pymem.Pymem, client):
         super().__init__(process)
@@ -59,6 +62,8 @@ class HookHandler(MemoryReader):
         self._round_spell_closing = False
 
     async def _get_open_autobot_address(self, size: int) -> int:
+        if size <= 0:
+            raise ValueError("Autobot allocation size must be positive")
         if self._autobot_pos + size > self.AUTOBOT_SIZE:
             raise RuntimeError("Somehow went over autobot size")
 
@@ -84,9 +89,10 @@ class HookHandler(MemoryReader):
         if self._autobot_address is None:
             await self._get_autobot_address()
 
-            # we only need to write back the pattern
+            # Every byte below is overwritten, not just the signature prefix.
+            # Preserve the whole region so close() can restore it exactly.
             self._original_autobot_bytes = await self.read_bytes(
-                self._autobot_address, len(self.AUTOBOT_PATTERN)
+                self._autobot_address, self.AUTOBOT_SIZE
             )
             logger.debug(
                 f"Got original bytes {self._original_autobot_bytes} from autobot"
@@ -96,7 +102,7 @@ class HookHandler(MemoryReader):
     async def _rewrite_autobot(self):
         if self._autobot_address is not None:
             compare_bytes = await self.read_bytes(
-                self._autobot_address, len(self.AUTOBOT_PATTERN)
+                self._autobot_address, self.AUTOBOT_SIZE
             )
             # Give some time for execution point to leave hooks
             await asyncio.sleep(0.5)
@@ -685,7 +691,7 @@ class HookHandler(MemoryReader):
         """
         return await self._read_hook_base_addr("chat_owner", "Chat")
 
-    async def activate_chat_send_hook(self):
+    async def activate_chat_send_hook(self, *, friend_requests_only=False):
         """Activate the chat send hook on the main game loop.
 
         This hooks the game's main loop so that send_msg() executes
@@ -696,24 +702,30 @@ class HookHandler(MemoryReader):
 
         await self._check_for_autobot()
 
-        hook = ChatSendHook(self)
+        hook = ChatSendHook(self, friend_requests_only=friend_requests_only)
         await hook.hook()
 
         self._active_hooks[ChatSendHook] = hook
-        self._base_addrs["send_trigger"] = hook.send_trigger
-        self._base_addrs["send_struct"] = hook.send_struct
+        if not friend_requests_only:
+            self._base_addrs["send_trigger"] = hook.send_trigger
+            self._base_addrs["send_struct"] = hook.send_struct
         self._base_addrs["buddy_trigger"] = hook.buddy_trigger
         self._base_addrs["buddy_obj"] = hook.buddy_obj
+
+    async def activate_friend_request_hook(self):
+        """Enable add_player() without resolving or enabling chat sending."""
+        await self.activate_chat_send_hook(friend_requests_only=True)
 
     async def deactivate_chat_send_hook(self):
         """Deactivate the chat send hook."""
         if not self._check_if_hook_active(ChatSendHook):
             raise HookNotActive("Chat send")
 
-        hook = self._active_hooks.pop(ChatSendHook)
+        hook = self._active_hooks[ChatSendHook]
         await hook.unhook()
+        del self._active_hooks[ChatSendHook]
 
-        del self._base_addrs["send_trigger"]
-        del self._base_addrs["send_struct"]
+        self._base_addrs.pop("send_trigger", None)
+        self._base_addrs.pop("send_struct", None)
         del self._base_addrs["buddy_trigger"]
         del self._base_addrs["buddy_obj"]
