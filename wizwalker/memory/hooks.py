@@ -551,6 +551,70 @@ class MovementTeleportHook(SimpleHook):
         self._set_page_protection(jes[0], self._old_je_page_protection)
 
 
+class ServerMoveSnapbackHook(SimpleHook):
+    """PR 37 server-movement observer; never changes the incoming destination.
+
+    Reviewed live 2026-11-12: handler 0x1675190, tree lookup site 0x167521F.
+    RBX is GameClient; node+0x20 is the incoming short key, node+0x28 its GID.
+    """
+    pattern = (rb"\x4C\x8B\xC1\x48\x8B\x09\x80\x79\x19\x00\x74\xE8"
+               rb"\x4C\x3B\xC2\x74\x07\x66\x41\x3B\x40\x20")
+    ORIGINAL = bytes.fromhex("4c8bc1488b09")
+    # Verify the containing lookup and the object/key registers as well as replay.
+    PREFIX = bytes.fromhex(
+        "488b93681302004885d27448488b92a80000004c8bc2488b4a08"
+        "807919007524663941207306488b4910eb06")
+    instruction_length = 6
+    noops = 1
+    exports = [("server_move_snapback_bool", 1)]
+
+    async def bytecode_generator(self, packed_exports):
+        code = bytearray(b"\x9c\x50")  # preserve flags and RAX
+        code += bytes.fromhex("488b83a8130200483b412858")  # compare full root GID
+        first = len(code)
+        code += b"\x0f\x85\0\0\0\0"
+        code += bytes.fromhex("66394120")  # node short key == original AX
+        second = len(code)
+        code += b"\x0f\x85\0\0\0\0"
+        code += b"\x50\xb0\x01\xa2" + packed_exports[0][1] + b"\x58"
+        restore = len(code)
+        code += b"\x9d" + self.ORIGINAL
+        for branch in (first, second):
+            struct.pack_into("<i", code, branch + 2, restore - branch - 6)
+        return bytes(code)
+
+    async def hook(self):
+        self.jump_address = await self.get_jump_address(self.pattern, module=self.module)
+        if (await self.read_bytes(self.jump_address, 6) != self.ORIGINAL
+                or await self.read_bytes(self.jump_address - len(self.PREFIX), len(self.PREFIX)) != self.PREFIX):
+            raise RuntimeError("Server movement lookup context changed; refusing to patch")
+        self.hook_address = await self.get_hook_address(96)
+        try:
+            self.hook_bytecode = await self.get_hook_bytecode()
+            self.jump_bytecode = await self.get_jump_bytecode()
+            if len(self.hook_bytecode) > 96 or len(self.jump_bytecode) != 6:
+                raise RuntimeError("Server movement trampoline exceeds reviewed bounds")
+            await self.write_bytes(self.server_move_snapback_bool, b"\x00")
+            await self.write_bytes(self.hook_address, self.hook_bytecode)
+            if await self.read_bytes(self.jump_address, 6) != self.ORIGINAL:
+                raise RuntimeError("Server movement entry changed during installation")
+            self.jump_original_bytecode = self.ORIGINAL
+            self._jump_written = True
+            await self.write_bytes(self.jump_address, self.jump_bytecode)
+        except BaseException:
+            await self.unhook()
+            raise
+
+    async def unhook(self):
+        if getattr(self, "_jump_written", False):
+            await self.write_bytes(self.jump_address, self.jump_original_bytecode)
+            self._jump_written = False
+        address = getattr(self, "server_move_snapback_bool", None)
+        if address:
+            await self.free(address)
+            self.server_move_snapback_bool = None
+
+
 class DropsToggleHook(SimpleHook):
     # Loot event dispatch. The adjacent QuestRewards callback has an otherwise
     # similar body; pin the four-character name length and verify the string.

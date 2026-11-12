@@ -1,0 +1,19 @@
+# Stepped teleport workaround
+
+Adapted from LaurenzLikeThat's [WizWalker PR 37](https://github.com/Deimos-Wizard101/wizwalker/pull/37), head `58e5eae16a12c0691d4454c13efff706bd626044`, for the November 12, 2026 live build.
+
+`Client.teleport()` splits long horizontal trips into 2000-unit hops, or 2800 when the equipment templates identify a mount. Intermediate hops use the PR's Z of -131068; the final hop uses the requested XYZ and yaw. The below-map route is retained to avoid traveling through mobs at ground height, but avoidance of aggro and acceptance by the server remain unverified. Short and purely vertical requests still use one native teleport. Pet mode reads the controlled object's location and does not apply the mount multiplier.
+
+`await client.modify_teleport_distance(0)` restores direct teleports. A positive finite value sets the unmounted horizontal step size. This is a per-client, in-memory option; no Deimos settings UI or persistence is added. Existing wait/purge keyword arguments are passed to each native request.
+
+The separate `ServerMoveSnapbackHook` is installed lazily on the first stepped trip. It observes matching movement callbacks; it does not suppress them or change their destination. `UpdateZoneCounterHook` is not included or required. The observer uses a one-byte flag, compares the full player GID, preserves flags/registers, validates the surrounding native instructions, initializes the flag before redirecting execution, and reads the current export after reinstallation.
+
+Unlike the upstream unbounded loops, this adaptation re-aims from the observed position and stops after 30 seconds, 128 intermediate hops, three hops without progress, or four unsuccessful final attempts. Loading, combat, zone changes, and controlled-object replacement stop the sequence. It serializes requests per client; close cancels and joins active teleport work before unhooking. Cancellation or failure during an armed native request clears its pending flag and restores both movement gates. `TeleportStepError` means arrival was not established and the position may have changed. Callers must not treat a partial trip as arrival or continue recovery from the old origin.
+
+## Dependencies and validation
+
+The reviewed live EXE SHA-256 is `d410a2463e7ff0e221d6d11ca10fa53de265abd17cacfba211f9eeca8ec8511a`. The observer's unique site is RVA `0x167521F`, in function `[0x1675190, 0x16753A7)`. It depends on GameClient in RBX, the player GID at `+0x213A8`, the lookup chain through `+0x21368` and `+0xA8`, node sentinel `+0x19`, short key `+0x20`, and full GID `+0x28`. The six replayed bytes are `4C 8B C1 48 8B 09`; a 44-byte preceding context is also guarded. Existing scratch allocation, movement helper/gates, body/client-object coordinates, pet parent, equipment/template names, zone, loading and battle readers remain dependencies.
+
+51 WizWalker tests pass, including 22 new stepping/observer tests. The machine-code test executes only local test buffers and verifies register/flag preservation, full-width ID filtering, replay and the one-byte store. Two Deimos integration tests pass. Static native review and tests are not gameplay validation.
+
+An observer-only live check on PID 48572 aborted before any writes because scratch code was already modified. No hooks were removed and no additional movement was attempted. Installation/restoration in the game, actual correction delivery, long below-map trips, mounted/pet stepping, and aggro behavior remain unverified. Earlier successful 10-unit/freecam checks belong to the preceding live compatibility port, not this implementation. Test realm has not been validated.
