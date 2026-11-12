@@ -1,4 +1,4 @@
-"""Bounded adaptation of LaurenzLikeThat's WizWalker PR 37 (58e5eae).
+"""Persistent adaptation of LaurenzLikeThat's WizWalker PR 37 (58e5eae).
 
 Intermediate hops retain the PR's below-map height. This is a workaround,
 not a guarantee of server acceptance or of avoiding combat.
@@ -12,10 +12,6 @@ from .memory.memory_objects.game_object_template import WizGameObjectTemplate
 
 DEFAULT_DISTANCE = 2000.0
 INTERMEDIATE_Z = -131068.0
-MAX_SECONDS = 30.0
-MAX_HOPS = 128
-MAX_STALLED_HOPS = 3
-MAX_FINAL_ATTEMPTS = 4
 
 
 class TeleportStepError(WizWalkerError):
@@ -115,45 +111,27 @@ async def teleport(client, xyz, yaw, options):
                 or await client.client_object.read_base_address() != address):
             raise TeleportStepError("Teleport stopped: loading, combat, zone or player changed")
 
-    try:
-        async with asyncio.timeout(MAX_SECONDS):
-            await check_state()
-            await client.hook_handler.ensure_server_move_snapback_hook()
-            best, stalls, hops = remaining(current), 0, 0
-            while remaining(current) > step:
-                if hops >= MAX_HOPS:
-                    raise TeleportStepError("Teleport step limit reached")
-                await check_state()
-                distance = remaining(current)
-                # Re-aim from the observed position after each correction.
-                point = XYZ(current.x + step * (xyz.x - current.x) / distance,
-                            current.y + step * (xyz.y - current.y) / distance,
-                            INTERMEDIATE_Z)
-                await client.reset_server_move_snapback()
-                await send(point)
-                await wait_for_correction(client)
-                await check_state()
-                current = await position()
-                hops += 1
-                distance = remaining(current)
-                if distance < best - 1.0:
-                    best, stalls = distance, 0
-                else:
-                    stalls += 1
-                    if stalls >= MAX_STALLED_HOPS:
-                        raise TeleportStepError("Teleport made no progress after repeated corrections")
-
-            for _ in range(MAX_FINAL_ATTEMPTS):
-                await check_state()
-                await client.reset_server_move_snapback()
-                await send(xyz)
-                corrected = await wait_for_correction(client)
-                await check_state()
-                current = await position()
-                if not corrected and math.dist(
-                        (xyz.x, xyz.y, xyz.z), (current.x, current.y, current.z)) <= 10.0:
-                    await finish()
-                    return
-            raise TeleportStepError("Final teleport was repeatedly corrected or did not arrive")
-    except TimeoutError as exc:
-        raise TeleportStepError("Stepped teleport exceeded its 30-second time limit") from exc
+    await check_state()
+    await client.hook_handler.ensure_server_move_snapback_hook()
+    while True:
+        await check_state()
+        distance = remaining(current)
+        final_hop = distance <= step
+        if final_hop:
+            point = xyz
+        else:
+            # Always re-aim, including when a final-hop correction sends us back.
+            point = XYZ(current.x + step * (xyz.x - current.x) / distance,
+                        current.y + step * (xyz.y - current.y) / distance,
+                        INTERMEDIATE_Z)
+        await client.reset_server_move_snapback()
+        await send(point)
+        corrected = await wait_for_correction(client)
+        await check_state()
+        current = await position()
+        if final_hop and not corrected and math.dist(
+                (xyz.x, xyz.y, xyz.z), (current.x, current.y, current.z)) <= 10.0:
+            await finish()
+            return
+        # The correction wait paces retries and remains cancellable. No attempt
+        # or elapsed-time budget may abandon an intermediate below-map hop.

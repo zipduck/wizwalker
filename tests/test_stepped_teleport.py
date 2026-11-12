@@ -113,36 +113,47 @@ class SteppingTests(unittest.IsolatedAsyncioTestCase):
         self.assertLess(second.y,500)
         self.assertGreater(second.y,0)
 
-    async def test_repeated_no_progress_is_bounded(self):
+    async def test_repeated_no_progress_keeps_retrying_until_arrival(self):
+        c=make_client()
+        calls=0
+        async def bounce(_):
+            nonlocal calls
+            calls += 1
+            if calls <= 15:
+                c.state.position=XYZ(0,0,10)
+                return True
+            return False
+        with patch.object(step,'wait_for_correction',side_effect=bounce):
+            await c.teleport(XYZ(5000,0,50),yaw=1)
+        self.assertGreater(len(c.state.calls),15)
+        self.assertEqual((c.state.position.x,c.state.position.y,c.state.position.z),(5000,0,50))
+        c.body.write_yaw.assert_awaited_once_with(1)
+
+    async def test_repeated_final_corrections_keep_retrying_until_arrival(self):
+        c=make_client()
+        with patch.object(step,'wait_for_correction',AsyncMock(side_effect=[True]*12+[False])):
+            await c.teleport(XYZ(2500,0,50),yaw=1)
+        self.assertEqual(len(c.state.calls),13)
+        c.body.write_yaw.assert_awaited_once_with(1)
+
+    async def test_more_than_128_hops_without_a_total_timeout(self):
+        c=make_client()
+        with patch.object(step.asyncio,'timeout',side_effect=AssertionError('No overall timeout')):
+            await c.teleport(XYZ(260001,0,50))
+        self.assertEqual(len(c.state.calls),131)
+        self.assertEqual((c.state.position.x,c.state.position.y,c.state.position.z),(260001,0,50))
+
+    async def test_final_correction_back_to_origin_resumes_intermediate_steps(self):
         c=make_client()
         async def bounce(_):
-            c.state.position=XYZ(0,0,10)
-            return True
+            if len(c.state.calls)==2:
+                c.state.position=XYZ(0,0,10)
+                return True
+            return False
         with patch.object(step,'wait_for_correction',side_effect=bounce):
-            with self.assertRaisesRegex(step.TeleportStepError,'no progress'):
-                await c.teleport(XYZ(5000,0,50),yaw=1)
-        self.assertEqual(len(c.state.calls),step.MAX_STALLED_HOPS)
-        c.body.write_yaw.assert_not_awaited()
-
-    async def test_repeated_final_corrections_are_bounded(self):
-        c=make_client()
-        with patch.object(step,'wait_for_correction',AsyncMock(return_value=True)):
-            with self.assertRaisesRegex(step.TeleportStepError,'Final'):
-                await c.teleport(XYZ(2500,0,50),yaw=1)
-        self.assertEqual(len(c.state.calls),1+step.MAX_FINAL_ATTEMPTS)
-        c.body.write_yaw.assert_not_awaited()
-
-    async def test_hop_budget_and_wall_clock_budget(self):
-        c=make_client()
-        with patch.object(step,'MAX_HOPS',1):
-            with self.assertRaisesRegex(step.TeleportStepError,'step limit'):
-                await c.teleport(XYZ(5000,0,50))
-        c=make_client()
-        async def stuck(_): await asyncio.Event().wait()
-        with patch.object(step,'MAX_SECONDS',0.01), patch.object(step,'wait_for_correction',side_effect=stuck):
-            with self.assertRaisesRegex(step.TeleportStepError,'time limit'):
-                await c.teleport(XYZ(5000,0,50))
-        self.assertFalse(c._teleport_lock.locked())
+            await c.teleport(XYZ(2500,0,50))
+        self.assertEqual([(p.x,p.z) for _,p,_ in c.state.calls],
+                         [(2000,step.INTERMEDIATE_Z),(2500,50),(2000,step.INTERMEDIATE_Z),(2500,50)])
 
     async def test_zone_loading_combat_and_identity_changes_stop_before_next_hop(self):
         for field in ('zone','loading','combat','identity'):
