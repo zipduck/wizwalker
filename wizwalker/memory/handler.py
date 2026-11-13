@@ -20,6 +20,7 @@ from .hooks import (
     RenderContextHook,
     MovementTeleportHook,
     DropsToggleHook,
+    ServerMoveSnapbackHook,
     MemoryHook
 )
 from .memory_reader import MemoryReader, Primitive
@@ -59,6 +60,7 @@ class HookHandler(MemoryReader):
         self._base_addrs = {}
 
         self._hook_cache = {}
+        self._server_move_hook_lock = asyncio.Lock()
         self._round_spell_closing = False
 
     async def _get_open_autobot_address(self, size: int) -> int:
@@ -508,6 +510,38 @@ class HookHandler(MemoryReader):
         return await self._read_hook_base_addr(
             "current_render_context", "Render context"
         )
+
+    async def ensure_server_move_snapback_hook(self):
+        """Lazily install PR 37's observer only for a stepped request."""
+        async with self._server_move_hook_lock:
+            if self._check_if_hook_active(ServerMoveSnapbackHook):
+                return
+            await self._check_for_autobot()
+            hook = ServerMoveSnapbackHook(self, hook_cache={})
+            self._active_hooks[ServerMoveSnapbackHook] = hook
+            try:
+                await hook.hook()
+            except BaseException:
+                # Keep registration if restoration fails, so close can retry.
+                await hook.unhook()
+                del self._active_hooks[ServerMoveSnapbackHook]
+                raise
+            self._base_addrs["server_move_snapback_bool"] = hook.server_move_snapback_bool
+
+    async def deactivate_server_move_snapback_hook(self):
+        async with self._server_move_hook_lock:
+            hook = self._active_hooks.get(ServerMoveSnapbackHook)
+            if hook is None:
+                raise HookNotActive("Server move snapback")
+            await hook.unhook()
+            del self._active_hooks[ServerMoveSnapbackHook]
+            self._base_addrs.pop("server_move_snapback_bool", None)
+
+    async def read_server_move_snapback_bool(self) -> int:
+        address = self._base_addrs.get("server_move_snapback_bool")
+        if address is None:
+            raise HookNotActive("Server move snapback")
+        return address
 
     async def activate_movement_teleport_hook(
             self, *, wait_for_ready: bool = False, timeout: float = None

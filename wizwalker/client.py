@@ -15,6 +15,7 @@ from . import (
 )
 from .constants import WIZARD_SPEED, Primitive
 from .errors import PatternMultipleResults
+from . import stepped_teleport
 from .memory import (
     CurrentActorBody,
     CurrentChatOwner,
@@ -80,6 +81,10 @@ class Client:
         self.chat_owner = CurrentChatOwner(self.hook_handler)
 
         self._teleport_helper = TeleportHelper(self.hook_handler)
+        self._teleport_distance = stepped_teleport.DEFAULT_DISTANCE
+        self._teleport_lock = asyncio.Lock()
+        self._teleport_task = None
+        self._teleport_closing = False
 
         self._disable_drops_bool = None
         self._template_ids = None
@@ -255,6 +260,7 @@ class Client:
             wait_for_ready: If this should wait for hooks to be ready to use (duel exempt)
             timeout: How long to wait for hook values to be witten (None for no timeout)
         """
+        self._teleport_closing = False
         await self.hook_handler.activate_all_hooks(
             wait_for_ready=wait_for_ready, timeout=timeout
         )
@@ -263,6 +269,12 @@ class Client:
         """
         Closes this client; unhooking all active hooks
         """
+        self._teleport_closing = True
+        pending = self._teleport_task
+        if pending is not None and pending is not asyncio.current_task():
+            pending.cancel()
+            await asyncio.gather(pending, return_exceptions=True)
+
         # if the client isn't running there isn't anything to unhook
         if not self.is_running():
             return
@@ -497,42 +509,49 @@ class Client:
         await body.write_yaw(yaw)
         await utils.timed_send_key(self.window_handle, Keycode.W, move_seconds)
 
+    async def modify_teleport_distance(self, value: float):
+        """Set the horizontal hop limit; 0 restores direct teleports (PR 37 API)."""
+        self._teleport_distance = stepped_teleport.checked_distance(value)
+
     async def teleport(
-            self,
-            xyz: XYZ,
-            yaw: float = None,
-            *,
+            self, xyz: XYZ, yaw: float = None, *,
             wait_on_inuse: bool = True,
             wait_on_inuse_timeout: float = 1.0,
             purge_on_after_unuser_fixer: bool = True,
             purge_on_after_unuser_fixer_timeout: float = 0.6,
     ):
+        """Teleport, splitting long requests into PR 37 below-map intermediate hops.
+
+        Default XY limit is 2000 (2800 mounted). Final XYZ/yaw are preserved.
+        modify_teleport_distance(0) disables stepping. A failed sequence raises
+        TeleportStepError; partial movement is possible. See docs/stepped-teleport.md.
+        Existing wait/purge options are forwarded to every native request.
         """
-        Teleport the client
+        async with self._teleport_lock:
+            if self._teleport_closing:
+                raise RuntimeError("Cannot teleport while the client is closing")
+            self._teleport_task = asyncio.current_task()
+            try:
+                await stepped_teleport.teleport(self, xyz, yaw, {
+                    "wait_on_inuse": wait_on_inuse,
+                    "wait_on_inuse_timeout": wait_on_inuse_timeout,
+                    "purge_on_after_unuser_fixer": purge_on_after_unuser_fixer,
+                    "purge_on_after_unuser_fixer_timeout": purge_on_after_unuser_fixer_timeout,
+                })
+            finally:
+                self._teleport_task = None
 
-        Args:
-            xyz: xyz to teleport to
-            yaw: yaw to set or None to not change
+    async def is_server_move_snapbacked(self) -> bool:
+        # Read the current export every time: re-hooking invalidates old addresses.
+        address = await self.hook_handler.read_server_move_snapback_bool()
+        value = await self.hook_handler.read_typed(address, Primitive.bool)
+        if value:
+            await self.hook_handler.write_typed(address, False, Primitive.bool)
+        return value
 
-        Keyword Args:
-            wait_on_inuse: If we should wait for the update bool to be False
-            wait_on_inuse_timeout: Time to wait for inuse flag to be setback
-            purge_on_after_unuser_fixer: If should wait for inuse flag after and reset if not set
-            purge_on_after_unuser_fixer_timeout: Time to wait for inuse flag to reset if not set
-        """
-        client_object_addr = await self.client_object.read_base_address()
-
-        await self._teleport_object(
-            client_object_addr,
-            xyz,
-            wait_on_inuse,
-            wait_on_inuse_timeout,
-            purge_on_after_unuser_fixer,
-            purge_on_after_unuser_fixer_timeout,
-        )
-
-        if yaw is not None:
-            await self.body.write_yaw(yaw)
+    async def reset_server_move_snapback(self):
+        address = await self.hook_handler.read_server_move_snapback_bool()
+        await self.hook_handler.write_typed(address, False, Primitive.bool)
 
     async def _teleport_object(
             self,
@@ -560,24 +579,31 @@ class Client:
 
         await self._teleport_helper.write_target_object_address(object_address)
         await self._teleport_helper.write_position(xyz)
-        await self._teleport_helper.write_should_update(True)
+        async def restore_request():
+            await self._teleport_helper.write_should_update(False)
+            hook = self.hook_handler._get_hook_by_type(MovementTeleportHook)
+            for je, original in zip(jes, hook._old_jes_bytes):
+                await self.hook_handler.write_bytes(je, original)
 
-        for je in jes:
-            await self.hook_handler.write_bytes(je, b"\x90" * 6)
-
-        if purge_on_after_unuser_fixer:
+        try:
+            await self._teleport_helper.write_should_update(True)
+            for je in jes:
+                await self.hook_handler.write_bytes(je, b"\x90" * 6)
+            if purge_on_after_unuser_fixer:
+                try:
+                    await maybe_wait_for_value_with_timeout(
+                        self._teleport_helper.should_update, value=False,
+                        timeout=purge_on_after_unuser_fixer_timeout,
+                    )
+                except ExceptionalTimeout:
+                    await restore_request()
+        except BaseException:
+            cleanup = asyncio.create_task(restore_request())
             try:
-                await maybe_wait_for_value_with_timeout(
-                    self._teleport_helper.should_update,
-                    value=False,
-                    timeout=purge_on_after_unuser_fixer_timeout,
-                )
-            except ExceptionalTimeout:
-                movement_teleport_hook = self.hook_handler._get_hook_by_type(MovementTeleportHook)
-                for je, old_bytes in zip(jes, movement_teleport_hook._old_jes_bytes):
-                    await self.hook_handler.write_bytes(je, old_bytes)
-
-                await self._teleport_helper.write_should_update(False)
+                await asyncio.shield(cleanup)
+            except asyncio.CancelledError:
+                await cleanup
+            raise
 
     async def enable_drops(self):
         if not self.hook_handler._check_if_hook_active(DropsToggleHook):
