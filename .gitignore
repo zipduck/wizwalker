@@ -142,3 +142,6 @@ cache/*
 tests_local/
 
 scratchpad.py
+
+# Local instructions and scratch files
+/AGENTS.md
