@@ -9,6 +9,8 @@ import warnings
 from loguru import logger
 
 from .memory_reader import MemoryReader
+from . import feature_diagnostics as diagnostic
+from . import native_safety
 from wizwalker.constants import kernel32
 
 
@@ -202,6 +204,26 @@ class SimpleHook(AutoBotBaseHook):
         for export in self.exports:
             if getattr(self, export[0], None):
                 await self.free(getattr(self, export[0]))
+
+
+class RetainedHook(SimpleHook):
+    """Private trampoline/export storage is reclaimed only by process exit."""
+
+    async def get_hook_address(self, size):
+        if size > 0x800:
+            raise ValueError('Private trampoline exceeds reserved code area')
+        return native_safety.allocate_near(self.hook_handler, self.jump_address, 4096)
+
+    def prepare_private_code(self):
+        native_safety.flush_code(self.hook_handler, self.hook_address, len(self.hook_bytecode))
+        native_safety.register_unwind(self)
+
+    async def patch_entry(self, value, expected):
+        await native_safety.patch_code(self.hook_handler, type(self).__name__,
+                                       self.jump_address, expected, value)
+
+    async def retire_exports(self):
+        await native_safety.retire_exports(self, type(self).__name__)
 
 
 class PlayerHook(SimpleHook):
@@ -551,7 +573,7 @@ class MovementTeleportHook(SimpleHook):
         self._set_page_protection(jes[0], self._old_je_page_protection)
 
 
-class DropsToggleHook(SimpleHook):
+class DropsToggleHook(RetainedHook):
     # Loot event dispatch. The adjacent QuestRewards callback has an otherwise
     # similar body; pin the four-character name length and verify the string.
     pattern = (
@@ -567,6 +589,89 @@ class DropsToggleHook(SimpleHook):
     instruction_length = 13
     exports = [("disable_drops_bool", 1)]
     noops = 8
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._lifecycle_lock = asyncio.Lock()
+        self._jump_written = False
+        self._installed = False
+
+    async def write_bytes(self, address, value):
+        region = ('flag' if address == getattr(self, 'disable_drops_bool', None) else
+                  'entry' if address == self.jump_address else 'trampoline')
+        if region == 'entry' and value == self.jump_bytecode:
+            # A partially failed entry write still needs restoration.
+            self._jump_written = True
+        if region == 'entry':
+            installing = value == self.jump_bytecode
+            if installing:
+                self.prepare_private_code()
+            expected = self.jump_original_bytecode if installing else self.jump_bytecode
+            await diagnostic.write(self.hook_handler, 'NoDrops',
+                lambda a, v: self.patch_entry(v, expected), address, value, region=region)
+        else:
+            await diagnostic.write(self.hook_handler, 'NoDrops', super().write_bytes,
+                                   address, value, region=region)
+
+    async def prehook(self):
+        if self.jump_original_bytecode != self.ORIGINAL or len(self.hook_bytecode) > 50:
+            raise RuntimeError('Drops entry changed or trampoline exceeds its reservation')
+        # Make pass-through explicit before publishing the detour.
+        await self.write_bytes(self.disable_drops_bool, b'\x00')
+
+    async def hook(self):
+        async with self._lifecycle_lock:
+            diagnostic.emit(self.hook_handler, 'NoDrops', 'install_begin')
+            try:
+                await super().hook()
+            except BaseException as error:
+                diagnostic.error(self.hook_handler, 'NoDrops', 'install_failed', error)
+                raise
+            self._installed = True
+            diagnostic.state(self.hook_handler, 'NoDrops', installed=True, disabled=False,
+                             flag=hex(self.disable_drops_bool), entry=hex(self.jump_address),
+                             trampoline=hex(self.hook_address))
+
+    @native_safety.serialized_feature
+    async def set_disabled(self, disabled):
+        # Serialize Python flag changes with unhook. Published flag storage is
+        # retained for native readers until process exit.
+        async with self._lifecycle_lock:
+            if not self._installed or not getattr(self, 'disable_drops_bool', None):
+                diagnostic.emit(self.hook_handler, 'NoDrops', 'flag_write_rejected', requested=bool(disabled))
+                raise RuntimeError('Drops hook is not installed or is closing')
+            address = self.disable_drops_bool
+            value = b'\x01' if disabled else b'\x00'
+            diagnostic.emit(self.hook_handler, 'NoDrops', 'flag_write_begin',
+                            requested=bool(disabled), address=hex(address))
+            diagnostic.state(self.hook_handler, 'NoDrops', requested=bool(disabled), flag_write='pending')
+            try:
+                await self.write_bytes(address, value)
+                if await self.read_bytes(address, 1) != value:
+                    raise RuntimeError('Drops flag write verification failed')
+            except BaseException as error:
+                diagnostic.state(self.hook_handler, 'NoDrops', flag_write='failed')
+                diagnostic.error(self.hook_handler, 'NoDrops', 'flag_write_failed', error)
+                raise
+            diagnostic.state(self.hook_handler, 'NoDrops', installed=True, disabled=bool(disabled),
+                             flag=hex(address), flag_write='verified')
+            return address
+
+    async def unhook(self):
+        async with self._lifecycle_lock:
+            diagnostic.emit(self.hook_handler, 'NoDrops', 'unhook_begin')
+            self._installed = False
+            try:
+                if self._jump_written:
+                    await self.write_bytes(self.jump_address, self.jump_original_bytecode)
+                    self._jump_written = False
+                address = getattr(self, 'disable_drops_bool', None)
+                if address:
+                    await self.retire_exports()
+            except BaseException as error:
+                diagnostic.error(self.hook_handler, 'NoDrops', 'unhook_failed', error)
+                raise
+            diagnostic.state(self.hook_handler, 'NoDrops', installed=False, disabled=False, flag=None)
 
     async def get_jump_address(self, pattern, module=None):
         address = await self.pattern_scan(pattern, module=module)

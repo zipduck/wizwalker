@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 import struct
 from typing import Any
 import warnings
@@ -23,6 +24,8 @@ from .hooks import (
     MemoryHook
 )
 from .memory_reader import MemoryReader, Primitive
+from . import feature_diagnostics as diagnostic
+from .native_safety import serialized_feature
 
 
 # noinspection PyUnresolvedReferences
@@ -48,6 +51,8 @@ class HookHandler(MemoryReader):
         super().__init__(process)
 
         self.client = client
+        self._feature_lock = asyncio.Lock()
+        self._feature_closing = False
 
         self._autobot_address = None
         self._autobot_lock = None
@@ -60,6 +65,13 @@ class HookHandler(MemoryReader):
 
         self._hook_cache = {}
         self._round_spell_closing = False
+
+    @asynccontextmanager
+    async def feature_mutation(self):
+        async with self._feature_lock:
+            if self._feature_closing:
+                raise RuntimeError('Client feature hooks are closing or closed')
+            yield
 
     async def _get_open_autobot_address(self, size: int) -> int:
         if size <= 0:
@@ -121,7 +133,49 @@ class HookHandler(MemoryReader):
 
         return address
 
+    async def set_speed_multiplier(self, value):
+        # A closing client may still appear in an already-snapshotted poll.
+        async with self._feature_lock:
+            if self._feature_closing or getattr(self, '_speed_closing', False):
+                return False
+            from .speed_control import SpeedController
+            controller = getattr(self, '_speed_controller', None)
+            if controller is None:
+                controller = self._speed_controller = SpeedController(self)
+            return controller.apply(value)
+
+    async def restore_speed_multiplier(self, reason='disable'):
+        async with self._feature_lock:
+            if reason in ('unhook', 'shutdown'):
+                self._speed_closing = True
+            if not self._feature_closing:
+                self._restore_speed_multiplier(reason)
+
+    def _restore_speed_multiplier(self, reason):
+        controller = getattr(self, '_speed_controller', None)
+        if controller is not None:
+            controller.restore(reason)
+
     async def close(self):
+        self._feature_closing = True
+        async with self._feature_lock:
+            await self._close_with_diagnostics()
+
+    async def _close_with_diagnostics(self):
+        trace = diagnostic.get_trace(self)
+        if trace is not None:
+            trace.emit('session', 'close_begin')
+        try:
+            self._restore_speed_multiplier('unhook')
+            await self._close_hooks()
+        except BaseException as error:
+            diagnostic.error(self, 'session', 'close_failed', error)
+            raise
+        if trace is not None:
+            trace.emit('session', 'close_complete', states=trace.states.copy())
+            await trace.stop()
+
+    async def _close_hooks(self):
         # The optional round-spell hook installs asynchronously. Complete its
         # registration before iterating hooks, including when Deimos cancels
         # background tasks without awaiting them before closing clients.
@@ -559,6 +613,7 @@ class HookHandler(MemoryReader):
 
         return addr
 
+    @serialized_feature
     async def activate_drops_toggle_hook(
         self, *, wait_for_ready: bool = False, timeout: float = None
     ):
@@ -566,22 +621,29 @@ class HookHandler(MemoryReader):
         if self._check_if_hook_active(DropsToggleHook):
             raise HookAlreadyActivated("Drops toggle")
 
-        await self._check_for_autobot()
-
         drops_toggle_hook = DropsToggleHook(self)
-        await drops_toggle_hook.hook()
-
+        # Keep partial installation recoverable; remove only after rollback wins.
         self._active_hooks[DropsToggleHook] = drops_toggle_hook
+        try:
+            await drops_toggle_hook.hook()
+        except BaseException:
+            await drops_toggle_hook.unhook()
+            del self._active_hooks[DropsToggleHook]
+            raise
         self._base_addrs["disable_drops_bool"] = drops_toggle_hook.disable_drops_bool
+        trace = diagnostic.get_trace(self)
+        if trace is not None:
+            trace.start()
 
+    @serialized_feature
     async def deactivate_drops_toggle_hook(self):
 
         if not self._check_if_hook_active(DropsToggleHook):
             raise HookNotActive("Drops toggle")
 
-        drops_toggle_hook = self._active_hooks.pop(DropsToggleHook)
+        drops_toggle_hook = self._active_hooks[DropsToggleHook]
         await drops_toggle_hook.unhook()
-
+        del self._active_hooks[DropsToggleHook]
         del self._base_addrs["disable_drops_bool"]
 
     async def read_disable_drops_bool(self) -> int:

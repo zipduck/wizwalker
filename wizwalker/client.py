@@ -267,6 +267,7 @@ class Client:
         if not self.is_running():
             return
 
+        await self.hook_handler.restore_speed_multiplier(reason='unhook')
         await self._unpatch_movement_update()
         await self.hook_handler.close()
 
@@ -580,27 +581,18 @@ class Client:
                 await self._teleport_helper.write_should_update(False)
 
     async def enable_drops(self):
-        if not self.hook_handler._check_if_hook_active(DropsToggleHook):
-            raise RuntimeError("Drops toggle not active")
-
-        # A reinstalled hook owns a new export; never reuse a freed flag address.
-        self._disable_drops_bool = await self.hook_handler.read_disable_drops_bool()
-
-        await self.hook_handler.write_bytes(
-            self._disable_drops_bool, 
-            b"\x00"
-        )
+        await self._set_drops_disabled(False)
 
     async def disable_drops(self):
-        if not self.hook_handler._check_if_hook_active(DropsToggleHook):
+        await self._set_drops_disabled(True)
+
+    async def _set_drops_disabled(self, disabled):
+        hook = self.hook_handler._get_hook_by_type(DropsToggleHook)
+        if hook is None:
             raise RuntimeError("Drops toggle not active")
-
-        self._disable_drops_bool = await self.hook_handler.read_disable_drops_bool()
-
-        await self.hook_handler.write_bytes(
-            self._disable_drops_bool, 
-            b"\x01"
-        )
+        # Resolve the active hook each time. Its lock protects the flag's Python
+        # lifetime through write/readback; never use this legacy cached address.
+        self._disable_drops_bool = await hook.set_disabled(disabled)
 
     async def _get_je_instruction_forward_backwards(self):
         """

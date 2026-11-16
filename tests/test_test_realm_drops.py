@@ -1,9 +1,10 @@
 """Drops trampoline and quest return-boundary regressions; no game required."""
 import ctypes
+import asyncio
 import re
 import struct
 import unittest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock, patch
 from types import SimpleNamespace
 
 from wizwalker.client import Client
@@ -22,14 +23,105 @@ class DropsTests(unittest.IsolatedAsyncioTestCase):
     async def test_toggle_uses_current_export_after_reinstallation(self):
         client = Client.__new__(Client)
         client._disable_drops_bool = 0xDEAD
-        client.hook_handler = SimpleNamespace(
-            _check_if_hook_active=lambda kind: True,
-            read_disable_drops_bool=AsyncMock(side_effect=(0x9000, 0xA000)),
-            write_bytes=AsyncMock())
+        hooks = []
+        for address, value in ((0x9000, b'\x01'), (0xA000, b'\x00')):
+            obj = DropsToggleHook(HookHandler(None, None), hook_cache={})
+            obj.disable_drops_bool, obj._installed = address, True
+            obj.write_bytes, obj.read_bytes = AsyncMock(), AsyncMock(return_value=value)
+            hooks.append(obj)
+        client.hook_handler = SimpleNamespace(_get_hook_by_type=Mock(side_effect=hooks))
         await client.disable_drops()
         await client.enable_drops()
-        self.assertEqual([call.args for call in client.hook_handler.write_bytes.await_args_list],
-                         [(0x9000,b'\x01'),(0xA000,b'\x00')])
+        hooks[0].write_bytes.assert_awaited_once_with(0x9000, b'\x01')
+        hooks[1].write_bytes.assert_awaited_once_with(0xA000, b'\x00')
+        self.assertEqual(client._disable_drops_bool, 0xA000)
+
+    async def test_flag_write_cannot_race_python_unhook_free(self):
+        obj = DropsToggleHook(HookHandler(None, None), hook_cache={})
+        obj.disable_drops_bool, obj._installed = 0x9000, True
+        entered, finish = asyncio.Event(), asyncio.Event()
+        async def write(address, value):
+            entered.set()
+            await finish.wait()
+        obj.write_bytes = AsyncMock(side_effect=write)
+        obj.read_bytes = AsyncMock(return_value=b'\x01')
+        obj.free = AsyncMock()
+        setter = asyncio.create_task(obj.set_disabled(True))
+        await entered.wait()
+        closing = asyncio.create_task(obj.unhook())
+        await asyncio.sleep(0)
+        obj.free.assert_not_awaited()
+        finish.set()
+        await asyncio.gather(setter, closing)
+        obj.free.assert_not_awaited()
+        self.assertIn(0x9000, obj.hook_handler._retained_native_allocations)
+        self.assertIsNone(obj.disable_drops_bool)
+        obj.write_bytes.reset_mock()
+        with self.assertRaisesRegex(RuntimeError, 'closing'):
+            await obj.set_disabled(False)
+        obj.write_bytes.assert_not_awaited()
+        await obj.unhook()
+        obj.free.assert_not_awaited()
+
+    async def test_flag_readback_failure_is_reported(self):
+        obj = DropsToggleHook(HookHandler(None, None), hook_cache={})
+        obj.disable_drops_bool, obj._installed = 0x9000, True
+        obj.write_bytes, obj.read_bytes = AsyncMock(), AsyncMock(return_value=b'\x00')
+        with self.assertRaisesRegex(RuntimeError, 'verification'):
+            await obj.set_disabled(True)
+
+    async def test_initial_flag_is_zero_before_detour_publication(self):
+        obj = DropsToggleHook(HookHandler(None, None), hook_cache={})
+        obj.disable_drops_bool = 0x9000
+        obj.jump_original_bytecode, obj.hook_bytecode = obj.ORIGINAL, bytes(40)
+        obj.write_bytes = AsyncMock()
+        await obj.prehook()
+        obj.write_bytes.assert_awaited_once_with(0x9000, b'\x00')
+
+    async def test_final_entry_and_reservation_guards_reject_before_flag_write(self):
+        obj = DropsToggleHook(HookHandler(None, None), hook_cache={})
+        obj.disable_drops_bool = 0x9000
+        obj.write_bytes = AsyncMock()
+        for original, size in ((b'\xe9' + bytes(12), 40), (obj.ORIGINAL, 51)):
+            obj.jump_original_bytecode, obj.hook_bytecode = original, bytes(size)
+            with self.assertRaisesRegex(RuntimeError, 'entry changed'):
+                await obj.prehook()
+            obj.write_bytes.assert_not_awaited()
+
+    async def test_partial_install_registered_during_cleanup(self):
+        handler = HookHandler(None, None)
+        handler._check_for_autobot = AsyncMock()
+        obj = SimpleNamespace(hook=AsyncMock(side_effect=OSError('partial write')))
+        async def unhook():
+            self.assertIs(handler._active_hooks[DropsToggleHook], obj)
+        obj.unhook = AsyncMock(side_effect=unhook)
+        with patch('wizwalker.memory.handler.DropsToggleHook', return_value=obj) as kind:
+            # Registration uses the patched class key in this construction test.
+            async def cleanup():
+                self.assertIs(handler._active_hooks[kind], obj)
+            obj.unhook.side_effect = cleanup
+            with self.assertRaisesRegex(OSError, 'partial write'):
+                await handler.activate_drops_toggle_hook()
+        obj.unhook.assert_awaited_once()
+        self.assertFalse(handler._active_hooks)
+
+    async def test_failed_unhook_keeps_registration_for_retry(self):
+        handler = HookHandler(None, None)
+        obj = DropsToggleHook(handler, hook_cache={})
+        handler._active_hooks[DropsToggleHook] = obj
+        handler._base_addrs['disable_drops_bool'] = 0x9000
+        obj.disable_drops_bool, obj._installed, obj._jump_written = 0x9000, True, True
+        obj.jump_address, obj.jump_original_bytecode = 0x1000, obj.ORIGINAL
+        obj.write_bytes = AsyncMock(side_effect=[OSError('restore failed'), None])
+        obj.free = AsyncMock()
+        with self.assertRaisesRegex(OSError, 'restore failed'):
+            await handler.deactivate_drops_toggle_hook()
+        self.assertIs(handler._active_hooks[DropsToggleHook], obj)
+        obj.free.assert_not_awaited()
+        await handler.deactivate_drops_toggle_hook()
+        self.assertNotIn(DropsToggleHook, handler._active_hooks)
+        obj.free.assert_not_awaited()
+        self.assertIn(0x9000, obj.hook_handler._retained_native_allocations)
 
     async def test_unique_callback_context_and_name_guard(self):
         self.assertIsNotNone(re.fullmatch(DropsToggleHook.pattern, SITE, re.S))
